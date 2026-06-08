@@ -113,6 +113,7 @@
     '.service-card',
     '.subject-card',
     '.teacher-card',
+    '.classroom-card',
     '.enrollment-card',
     '.contact-form',
     '.contact-info-item',
@@ -129,4 +130,53 @@
   // ========== Init ==========
   window.addEventListener('scroll', handleScroll, { passive: true });
   handleScroll();
+
+  // ========== Classroom lightbox ==========
+  const createLightbox = () => {
+    const lightbox = document.createElement('div');
+    lightbox.className = 'lightbox';
+    lightbox.innerHTML = `
+      <button class="lightbox-close" aria-label="关闭">&times;</button>
+      <img class="lightbox-img" src="" alt="">
+    `;
+    document.body.appendChild(lightbox);
+
+    const img = lightbox.querySelector('.lightbox-img');
+
+    const open = (src, alt) => {
+      img.src = src;
+      img.alt = alt;
+      lightbox.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    };
+
+    const close = () => {
+      lightbox.classList.remove('open');
+      document.body.style.overflow = '';
+      setTimeout(() => { img.src = ''; }, 300);
+    };
+
+    lightbox.addEventListener('click', (e) => {
+      if (e.target === lightbox || e.target.classList.contains('lightbox-close')) {
+        close();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && lightbox.classList.contains('open')) {
+        close();
+      }
+    });
+
+    return { open, close };
+  };
+
+  const lightbox = createLightbox();
+
+  document.querySelectorAll('.classroom-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const img = card.querySelector('.classroom-img');
+      lightbox.open(img.src, img.alt);
+    });
+  });
 })();

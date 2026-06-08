@@ -834,6 +834,106 @@ section { padding: 96px 0; }
   line-height: 1.7;
 }
 
+/* ========== Classroom ========== */
+.classroom {
+  background: var(--white);
+}
+
+.classroom-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.classroom-card {
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  background: var(--white);
+}
+
+.classroom-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.classroom-img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.4s ease;
+}
+
+.classroom-card:hover .classroom-img {
+  transform: scale(1.03);
+}
+
+.classroom-label {
+  text-align: center;
+  padding: 14px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--white);
+}
+
+/* Lightbox */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.lightbox.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.lightbox-img {
+  max-width: 92vw;
+  max-height: 90vh;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  transform: scale(0.9);
+  transition: transform 0.3s ease;
+}
+
+.lightbox.open .lightbox-img {
+  transform: scale(1);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 /* ========== Testimonials ========== */
 .testimonials {
   background: var(--bg);
@@ -1203,6 +1303,14 @@ section { padding: 96px 0; }
 @media (max-width: 480px) {
   .teachers-grid { grid-template-columns: 1fr; }
   .enrollment-grid { grid-template-columns: repeat(2, 1fr); }
+  .results-grid { grid-template-columns: 1fr; }
+  .testimonials-grid { grid-template-columns: 1fr; }
 
   .contact-form { padding: 24px 16px; }
+}
+
+@media (min-width: 640px) {
+  .classroom-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
