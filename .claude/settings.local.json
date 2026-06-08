@@ -7,7 +7,10 @@
       "Bash(git commit *)",
       "Bash(git remote *)",
       "Bash(git push *)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(mv \"托班image\" toban_image)",
+      "Bash(rm \"toban_image/yard_full.jpg\" \"toban_image/yard_corner.heic\" \"toban_image/院子边角罗汉松.HEIC\" \"toban_image/.DS_Store\")",
+      "Bash(file toban_image/*)"
     ]
   }
 }
