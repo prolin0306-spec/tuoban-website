@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>每日成长反馈 — 春日部托管</title>
+  <meta name="description" content="春日部托管每日成长反馈，记录孩子学习与生活，让家长随时了解孩子在托班情况。">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/daily-feedback.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="df-page">
+
+  <!-- 导航栏 -->
+  <header class="header" id="header">
+    <div class="container header-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-icon">📘</span>
+        <span class="logo-text">春日部托管</span>
+      </a>
+      <nav class="nav" id="nav">
+        <a href="index.html" class="nav-link">首页</a>
+        <a href="index.html#services" class="nav-link">服务介绍</a>
+        <a href="index.html#subjects" class="nav-link">学科辅导</a>
+        <a href="index.html#pickup" class="nav-link">安全接送</a>
+        <a href="index.html#enrollment" class="nav-link">招生对象</a>
+        <a href="index.html#teachers" class="nav-link">师资团队</a>
+        <a href="index.html#classroom" class="nav-link">托班环境</a>
+        <a href="daily-feedback.html" class="nav-link active">每日反馈</a>
+        <a href="index.html#contact" class="nav-link">联系我们</a>
+      </nav>
+      <button class="menu-toggle" id="menuToggle" aria-label="菜单">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 页面标题 -->
+  <section class="df-hero">
+    <div class="container">
+      <h1 class="df-hero-title">每日成长反馈</h1>
+      <p class="df-hero-subtitle">每天记录孩子的成长，让家长随时了解孩子在托班的学习与生活。</p>
+    </div>
+  </section>
+
+  <!-- 第一部分：查询区域 -->
+  <section class="df-query-section" id="querySection">
+    <div class="container">
+      <div class="df-query-card">
+        <h2>查看孩子每日反馈</h2>
+        <p class="df-query-desc">请输入家长手机号查询孩子成长记录。</p>
+        <div class="df-query-row">
+          <input type="tel" id="phoneInput" placeholder="手机号" maxlength="11" autocomplete="tel">
+          <button class="btn btn-primary" id="queryBtn"><i class="fas fa-search"></i> 立即查询</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 第二部分：成长记录 -->
+  <section id="reportSection" style="display:none;"></section>
+
+  <!-- 第三部分：历史记录 -->
+  <section class="df-history-section" id="historySection" style="display:none;">
+    <div class="container">
+      <h2 class="df-history-title"><i class="fas fa-history"></i> 成长记录</h2>
+      <div class="df-timeline" id="historyList"></div>
+    </div>
+  </section>
+
+  <!-- 页脚 -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <span class="footer-logo-icon">📘</span>
+          <span>春日部托管</span>
+        </div>
+        <p class="footer-desc">专注小学生课后托管与作业辅导，让家长安心，让孩子进步</p>
+        <div class="footer-nav">
+          <a href="index.html">首页</a>
+          <a href="index.html#services">服务介绍</a>
+          <a href="index.html#subjects">学科辅导</a>
+          <a href="index.html#pickup">安全接送</a>
+          <a href="index.html#enrollment">招生对象</a>
+          <a href="index.html#teachers">师资团队</a>
+          <a href="index.html#classroom">托班环境</a>
+          <a href="daily-feedback.html">每日反馈</a>
+          <a href="index.html#contact">联系我们</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 春日部托管 版权所有</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- 返回顶部 -->
+  <button class="back-to-top" id="backToTop" aria-label="返回顶部">↑</button>
+
+  <script src="js/daily-feedback.js"></script>
+</body>
+</html>

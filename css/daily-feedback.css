@@ -1,0 +1,502 @@
+/* ========== 每日反馈 - 页面级样式 ========== */
+
+/* 页面通用 */
+.df-page {
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+.df-page section {
+  padding: 64px 0;
+}
+
+/* ========== 页面标题区 ========== */
+.df-hero {
+  padding-top: 136px;
+  padding-bottom: 56px;
+  text-align: center;
+  background: linear-gradient(170deg, #EFF6FF 0%, #F8FAFC 40%, #ECFDF5 80%, #F8FAFC 100%);
+}
+
+.df-hero-title {
+  font-size: clamp(28px, 4vw, 38px);
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+
+.df-hero-subtitle {
+  font-size: 16px;
+  color: var(--text-light);
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.8;
+}
+
+/* ========== 查询卡片 ========== */
+.df-query-section {
+  padding-top: 0;
+  padding-bottom: 48px;
+}
+
+.df-query-card {
+  max-width: 560px;
+  margin: 0 auto;
+  background: var(--white);
+  padding: 40px 36px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.df-query-card h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.df-query-card .df-query-desc {
+  font-size: 14px;
+  color: var(--text-light);
+  margin-bottom: 28px;
+}
+
+.df-query-row {
+  display: flex;
+  gap: 12px;
+}
+
+.df-query-row input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--white);
+  transition: var(--transition);
+  outline: none;
+  color: var(--text);
+}
+
+.df-query-row input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+.df-query-row .btn {
+  white-space: nowrap;
+}
+
+/* ========== 孩子信息头部 ========== */
+.df-child-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 36px;
+  padding: 28px 32px;
+  background: var(--white);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.df-child-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  color: var(--white);
+  flex-shrink: 0;
+}
+
+.df-child-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.df-child-class {
+  font-size: 14px;
+  color: var(--primary);
+  font-weight: 500;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.df-child-updated {
+  font-size: 13px;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ========== 信息卡片网格 ========== */
+.df-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.df-card {
+  background: var(--white);
+  padding: 28px 24px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+}
+
+.df-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+.df-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  margin-bottom: 16px;
+}
+
+.df-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.df-card-subtitle {
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 8px;
+}
+
+.df-card-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.df-attendance-normal {
+  color: var(--secondary);
+}
+
+/* 饮食列表 */
+.df-meals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.df-meal-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.df-meal-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.df-meal-status {
+  color: var(--secondary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* 学习列表 */
+.df-study-list,
+.df-perf-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.df-study-item,
+.df-perf-item {
+  font-size: 14px;
+  color: var(--text-light);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.6;
+}
+
+.df-study-item i {
+  color: var(--secondary);
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.df-perf-item i {
+  color: var(--accent);
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.df-card-comment {
+  font-size: 14px;
+  color: var(--text-light);
+  line-height: 1.8;
+}
+
+/* ========== 历史记录 ========== */
+.df-history-section {
+  padding-top: 0;
+  padding-bottom: 96px;
+}
+
+.df-history-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.df-history-title i {
+  color: var(--primary);
+  margin-right: 8px;
+}
+
+/* 时间轴 */
+.df-timeline {
+  max-width: 680px;
+  margin: 0 auto;
+  position: relative;
+  padding-left: 28px;
+}
+
+.df-timeline::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--primary), var(--secondary));
+  border-radius: 1px;
+}
+
+.df-timeline-item {
+  position: relative;
+  padding-bottom: 20px;
+}
+
+.df-timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.df-timeline-dot {
+  position: absolute;
+  left: -28px;
+  top: 18px;
+  width: 12px;
+  height: 12px;
+  background: var(--primary);
+  border: 3px solid var(--white);
+  border-radius: 50%;
+  z-index: 1;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+.df-timeline-content {
+  background: var(--white);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.df-timeline-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  user-select: none;
+}
+
+.df-timeline-header:hover {
+  background: var(--bg);
+}
+
+.df-timeline-date {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.df-timeline-summary {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.df-timeline-toggle {
+  color: var(--text-light);
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+/* 手风琴详情 */
+.df-timeline-detail {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease, padding 0.35s ease;
+}
+
+.df-timeline-detail.open {
+  max-height: 400px;
+}
+
+.df-detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 20px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.df-detail-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bg);
+  font-size: 14px;
+  color: var(--text-light);
+  line-height: 1.6;
+}
+
+.df-detail-item:last-child {
+  border-bottom: none;
+}
+
+.df-detail-label {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.df-detail-full {
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ========== Toast ========== */
+.df-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--secondary);
+  color: var(--white);
+  padding: 14px 32px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  z-index: 9999;
+  animation: dfSlideDown 0.3s ease, dfSlideUp 0.3s ease 2.7s forwards;
+}
+
+@keyframes dfSlideDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes dfSlideUp {
+  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+  to { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 1024px) {
+  .df-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .df-hero {
+    padding-top: 104px;
+    padding-bottom: 40px;
+  }
+
+  .df-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .df-child-header {
+    flex-direction: column;
+    text-align: center;
+    padding: 24px;
+  }
+
+  .df-child-class,
+  .df-child-updated {
+    justify-content: center;
+  }
+
+  .df-query-card {
+    padding: 28px 20px;
+  }
+
+  .df-query-row {
+    flex-direction: column;
+  }
+
+  .df-query-row .btn {
+    width: 100%;
+  }
+
+  .df-timeline {
+    padding-left: 24px;
+  }
+
+  .df-timeline-dot {
+    left: -24px;
+  }
+
+  .df-timeline-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .df-query-card h2 {
+    font-size: 18px;
+  }
+
+  .df-card {
+    padding: 20px 16px;
+  }
+}
