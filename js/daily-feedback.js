@@ -158,20 +158,53 @@
     queryBtn.disabled = true;
     queryBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 查询中...';
 
-    db.collection('children').where({ parentPhone: phone }).get()
+    const queryCondition = { parentPhone: phone };
+    console.log('========== CloudBase 查询调试 ==========');
+    console.log('用户输入的手机号:', phone);
+    console.log('手机号长度:', phone.length);
+    console.log('查询条件:', JSON.stringify(queryCondition));
+    console.log('dbReady:', dbReady);
+    console.log('db:', db);
+
+    db.collection('children').where(queryCondition).get()
       .then((res) => {
+        console.log('---------- children 查询结果 ----------');
+        console.log('res 完整返回:', JSON.stringify(res, null, 2));
+        console.log('res.data:', res.data);
+        console.log('res.data 类型:', Array.isArray(res.data) ? 'Array' : typeof res.data);
+        console.log('res.data.length:', res.data ? res.data.length : 'null/undefined');
+
         if (!res.data || res.data.length === 0) {
+          console.warn('未找到匹配的孩子。可能原因:');
+          console.warn('1. children 集合中 parentPhone 字段的值与输入不匹配');
+          console.warn('2. 数据库权限未开放读取');
+          console.warn('3. parentPhone 字段名与数据库实际字段不一致');
+          console.warn('4. 手机号格式不一致（如数据库中有空格/横线）');
           showToast('未找到匹配的孩子信息', 'error');
           queryBtn.disabled = false;
           queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
           return null;
         }
+
+        console.log('找到孩子:', res.data[0]);
+        if (res.data.length > 1) {
+          console.warn('找到多个匹配孩子，共', res.data.length, '条，仅使用第一条');
+        }
         const child = res.data[0];
+        console.log('---------- 查询 daily_reports ----------');
+        console.log('child._id:', child._id);
+        console.log('child 完整数据:', JSON.stringify(child, null, 2));
+
         return db.collection('daily_reports')
           .where({ childId: child._id })
           .orderBy('date', 'desc')
           .get()
-          .then((reportsRes) => ({ child, reports: reportsRes.data || [] }));
+          .then((reportsRes) => {
+            console.log('---------- daily_reports 查询结果 ----------');
+            console.log('reportsRes.data:', reportsRes.data);
+            console.log('reportsRes.data.length:', reportsRes.data ? reportsRes.data.length : 0);
+            return { child, reports: reportsRes.data || [] };
+          });
       })
       .then((result) => {
         queryBtn.disabled = false;
