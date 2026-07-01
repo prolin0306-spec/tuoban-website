@@ -180,7 +180,33 @@
           console.warn('2. 数据库权限未开放读取');
           console.warn('3. parentPhone 字段名与数据库实际字段不一致');
           console.warn('4. 手机号格式不一致（如数据库中有空格/横线）');
-          showToast('未找到匹配的孩子信息', 'error');
+
+          // 调试：在页面上显示完整的 res 对象
+          const resStr = JSON.stringify(res, null, 2);
+          const hasError = res && res.error;
+          const debugMsg = [
+            '手机号: ' + phone,
+            '查询条件: { parentPhone: "' + phone + '" }',
+            'res.data: ' + JSON.stringify(res.data),
+            'res.data.length: ' + (res.data ? res.data.length : 'N/A'),
+            hasError ? '⚠️ res.error: ' + JSON.stringify(res.error) : 'res.error: 无',
+            'res 完整: ' + (resStr.length > 500 ? resStr.slice(0, 500) + '...' : resStr)
+          ].join('\n');
+
+          console.log(debugMsg);
+          showToast(hasError ? '查询出错（见页面底部调试面板）' : '未找到匹配的孩子信息', 'error');
+
+          // 页面底部显示调试面板
+          let panel = document.getElementById('debugPanel');
+          if (!panel) {
+            panel = document.createElement('pre');
+            panel.id = 'debugPanel';
+            panel.style.cssText = 'margin:20px auto;max-width:680px;padding:16px;background:#1e1e1e;color:#0f0;font-size:13px;line-height:1.7;border-radius:8px;white-space:pre-wrap;overflow-x:auto;';
+            reportSection.style.display = 'block';
+            reportSection.appendChild(panel);
+          }
+          panel.textContent = '🔍 调试信息（可截图发给我）:\n\n' + debugMsg;
+
           queryBtn.disabled = false;
           queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
           return null;
