@@ -158,78 +158,72 @@
     queryBtn.disabled = true;
     queryBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 查询中...';
 
-    const queryCondition = { parentPhone: phone };
-    console.log('========== CloudBase 查询调试 ==========');
-    console.log('用户输入的手机号:', phone);
-    console.log('手机号长度:', phone.length);
-    console.log('查询条件:', JSON.stringify(queryCondition));
-    console.log('dbReady:', dbReady);
-    console.log('db:', db);
+    // === 诊断步骤1: 先拉取 children 集合前3条，看实际字段名和值 ===
+    const debugPanel = (() => {
+      let p = document.getElementById('debugPanel');
+      if (!p) {
+        p = document.createElement('pre');
+        p.id = 'debugPanel';
+        p.style.cssText = 'margin:20px auto;max-width:680px;padding:16px;background:#1e1e1e;color:#0f0;font-size:13px;line-height:1.7;border-radius:8px;white-space:pre-wrap;overflow-x:auto;';
+        reportSection.style.display = 'block';
+        reportSection.appendChild(p);
+      }
+      return p;
+    })();
 
-    db.collection('children').where(queryCondition).get()
-      .then((res) => {
-        console.log('---------- children 查询结果 ----------');
-        console.log('res 完整返回:', JSON.stringify(res, null, 2));
-        console.log('res.data:', res.data);
-        console.log('res.data 类型:', Array.isArray(res.data) ? 'Array' : typeof res.data);
-        console.log('res.data.length:', res.data ? res.data.length : 'null/undefined');
+    debugPanel.textContent = '⏳ 诊断中...';
 
-        if (!res.data || res.data.length === 0) {
-          console.warn('未找到匹配的孩子。可能原因:');
-          console.warn('1. children 集合中 parentPhone 字段的值与输入不匹配');
-          console.warn('2. 数据库权限未开放读取');
-          console.warn('3. parentPhone 字段名与数据库实际字段不一致');
-          console.warn('4. 手机号格式不一致（如数据库中有空格/横线）');
+    db.collection('children').limit(3).get()
+      .then((sampleRes) => {
+        const lines = [];
+        lines.push('输入手机号: ' + phone);
+        lines.push('查询条件: { parentPhone: "' + phone + '" }');
+        lines.push('');
 
-          // 调试：在页面上显示完整的 res 对象
-          const resStr = JSON.stringify(res, null, 2);
-          const hasError = res && res.error;
-          const debugMsg = [
-            '手机号: ' + phone,
-            '查询条件: { parentPhone: "' + phone + '" }',
-            'res.data: ' + JSON.stringify(res.data),
-            'res.data.length: ' + (res.data ? res.data.length : 'N/A'),
-            hasError ? '⚠️ res.error: ' + JSON.stringify(res.error) : 'res.error: 无',
-            'res 完整: ' + (resStr.length > 500 ? resStr.slice(0, 500) + '...' : resStr)
-          ].join('\n');
-
-          console.log(debugMsg);
-          showToast(hasError ? '查询出错（见页面底部调试面板）' : '未找到匹配的孩子信息', 'error');
-
-          // 页面底部显示调试面板
-          let panel = document.getElementById('debugPanel');
-          if (!panel) {
-            panel = document.createElement('pre');
-            panel.id = 'debugPanel';
-            panel.style.cssText = 'margin:20px auto;max-width:680px;padding:16px;background:#1e1e1e;color:#0f0;font-size:13px;line-height:1.7;border-radius:8px;white-space:pre-wrap;overflow-x:auto;';
-            reportSection.style.display = 'block';
-            reportSection.appendChild(panel);
-          }
-          panel.textContent = '🔍 调试信息（可截图发给我）:\n\n' + debugMsg;
-
-          queryBtn.disabled = false;
-          queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
-          return null;
+        if (!sampleRes.data || sampleRes.data.length === 0) {
+          lines.push('⚠️ children 集合为空！没有任何文档。');
+          lines.push('请先在 CloudBase 控制台 → 数据库 → children 中添加数据。');
+        } else {
+          lines.push('children 集合前 ' + sampleRes.data.length + ' 条文档:');
+          sampleRes.data.forEach((doc, i) => {
+            lines.push('--- 文档 ' + (i + 1) + ' ---');
+            lines.push('字段名: [' + Object.keys(doc).join(', ') + ']');
+            lines.push('完整数据: ' + JSON.stringify(doc, null, 2));
+          });
+          lines.push('');
+          lines.push('结论: 请对比上面的字段名和 parentPhone 是否一致！');
         }
 
-        console.log('找到孩子:', res.data[0]);
-        if (res.data.length > 1) {
-          console.warn('找到多个匹配孩子，共', res.data.length, '条，仅使用第一条');
-        }
-        const child = res.data[0];
-        console.log('---------- 查询 daily_reports ----------');
-        console.log('child._id:', child._id);
-        console.log('child 完整数据:', JSON.stringify(child, null, 2));
+        debugPanel.textContent = '🔍 诊断结果:\n\n' + lines.join('\n');
 
-        return db.collection('daily_reports')
-          .where({ childId: child._id })
-          .orderBy('date', 'desc')
-          .get()
-          .then((reportsRes) => {
-            console.log('---------- daily_reports 查询结果 ----------');
-            console.log('reportsRes.data:', reportsRes.data);
-            console.log('reportsRes.data.length:', reportsRes.data ? reportsRes.data.length : 0);
-            return { child, reports: reportsRes.data || [] };
+        // 步骤2: 用 parentPhone 查询
+        return db.collection('children').where({ parentPhone: phone }).get()
+          .then((res) => {
+            const moreLines = [];
+            moreLines.push('');
+            moreLines.push('--- parentPhone 查询 ---');
+            moreLines.push('res.data: ' + JSON.stringify(res.data));
+            moreLines.push('res.data.length: ' + (res.data ? res.data.length : 'N/A'));
+
+            debugPanel.textContent = '🔍 诊断结果:\n\n' + lines.join('\n') + '\n' + moreLines.join('\n');
+
+            queryBtn.disabled = false;
+            queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
+
+            if (!res.data || res.data.length === 0) {
+              showToast('未找到，看页面底部诊断', 'error');
+              return null;
+            }
+
+            const child = res.data[0];
+            return db.collection('daily_reports')
+              .where({ childId: child._id })
+              .orderBy('date', 'desc')
+              .get()
+              .then((reportsRes) => {
+                debugPanel.textContent = debugPanel.textContent + '\n\n找到孩子: ' + child.name + '\ndaily_reports 数量: ' + (reportsRes.data ? reportsRes.data.length : 0);
+                return { child, reports: reportsRes.data || [] };
+              });
           });
       })
       .then((result) => {
