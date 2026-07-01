@@ -169,11 +169,20 @@
         }
 
         const child = res.data[0];
+        console.log('找到孩子:', child.name);
         return db.collection('daily_reports')
           .where({ childId: child._id })
           .orderBy('date', 'desc')
           .get()
-          .then((reportsRes) => ({ child, reports: reportsRes.data || [] }));
+          .then((reportsRes) => {
+            const reports = reportsRes.data || [];
+            // 临时诊断：打印 daily_reports 文档的真实字段名
+            if (reports.length > 0) {
+              console.log('daily_reports 第1条字段名:', Object.keys(reports[0]));
+              console.log('daily_reports 第1条完整数据:', JSON.stringify(reports[0], null, 2));
+            }
+            return { child, reports };
+          });
       })
       .then((result) => {
         queryBtn.disabled = false;
