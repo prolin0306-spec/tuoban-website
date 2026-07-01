@@ -1,6 +1,52 @@
 (() => {
   'use strict';
 
+  // ========== CloudBase 初始化 ==========
+  const ENV_ID = 'tuoban-booking-d6g862sk51b7dbb40';
+
+  let db = null;
+  let dbReady = false;
+
+  const initCloudBase = () => {
+    if (typeof cloudbase === 'undefined') {
+      console.error('CloudBase SDK 未加载');
+      return;
+    }
+
+    let app;
+    try {
+      app = cloudbase.init({ env: ENV_ID });
+    } catch (err) {
+      console.error('cloudbase.init() 异常:', err);
+      return;
+    }
+
+    try {
+      db = app.database();
+    } catch (err) {
+      console.error('app.database() 异常:', err);
+      return;
+    }
+
+    const auth = app.auth({ persistence: 'local' });
+    auth.signInAnonymously().then(() => {
+      if (!auth.currentUser) {
+        console.error('匿名登录失败');
+        return;
+      }
+      dbReady = true;
+      console.log('CloudBase 初始化完成 (daily-feedback)');
+    }).catch((err) => {
+      console.error('匿名登录异常:', err);
+    });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCloudBase);
+  } else {
+    initCloudBase();
+  }
+
   // ========== 导航 UI 逻辑 ==========
   const header = document.getElementById('header');
   const nav = document.getElementById('nav');
@@ -48,96 +94,7 @@
   window.addEventListener('scroll', handleScroll, { passive: true });
   handleScroll();
 
-  // TODO: CloudBase — 后续接入数据库时，将以下模拟数据替换为 CloudBase 查询
-
-  // ========== 模拟数据 ==========
-  const mockReport = {
-    childName: '曾小明',
-    className: '二年级（1）班',
-    avatar: 'toban_image/classroom.jpg',
-    updatedAt: '2026-06-29 17:30',
-    attendance: {
-      status: 'normal',
-      label: '正常到园',
-      icon: 'fa-calendar-check'
-    },
-    meals: [
-      { meal: '早餐', status: '全部吃完' },
-      { meal: '午餐', status: '全部吃完' },
-      { meal: '下午点心', status: '已食用' }
-    ],
-    study: [
-      '拼音练习',
-      '数学口算',
-      '阅读训练'
-    ],
-    performance: [
-      '积极参与课堂互动。',
-      '认真完成老师布置的任务。'
-    ],
-    comment: '今天表现很好，课堂专注，积极举手回答问题，与同学相处融洽。'
-  };
-
-  const mockHistory = [
-    {
-      date: '2026-06-29',
-      summary: '课堂表现优秀，饮食正常',
-      detail: {
-        attendance: '正常到园',
-        meals: '早餐全部吃完，午餐全部吃完，下午点心已食用',
-        study: '拼音练习、数学口算、阅读训练',
-        performance: '积极参与课堂互动，认真完成老师布置的任务',
-        comment: '今天表现很好，课堂专注，积极举手回答问题，与同学相处融洽。'
-      }
-    },
-    {
-      date: '2026-06-28',
-      summary: '积极参与活动',
-      detail: {
-        attendance: '正常到园',
-        meals: '早餐全部吃完，午餐全部吃完，下午点心已食用',
-        study: '语文阅读、英语单词、手工课',
-        performance: '参与课外活动积极，与同学合作愉快',
-        comment: '今天在手工课上表现突出，作品很有创意。'
-      }
-    },
-    {
-      date: '2026-06-27',
-      summary: '午睡良好',
-      detail: {
-        attendance: '正常到园',
-        meals: '早餐全部吃完，午餐剩少许蔬菜，下午点心已食用',
-        study: '数学应用题、语文写作、英语听力',
-        performance: '午睡质量好，下午精神饱满',
-        comment: '数学应用题有进步，继续保持。'
-      }
-    },
-    {
-      date: '2026-06-26',
-      summary: '课堂专注力提升',
-      detail: {
-        attendance: '正常到园',
-        meals: '早餐全部吃完，午餐全部吃完，下午点心已食用',
-        study: '拼音复习、数学口算、阅读训练',
-        performance: '专注力明显提升，作业完成速度快',
-        comment: '今天在课堂上注意力很集中，值得表扬。'
-      }
-    },
-    {
-      date: '2026-06-25',
-      summary: '与同学相处融洽',
-      detail: {
-        attendance: '正常到园',
-        meals: '早餐全部吃完，午餐全部吃完，下午点心已食用',
-        study: '语文生字、数学练习、英语朗读',
-        performance: '主动帮助同学，课间活动文明',
-        comment: '与同学相处越来越好了，是个乐于助人的孩子。'
-      }
-    }
-  ];
-
   // ========== DOM 元素 ==========
-  const querySection = document.getElementById('querySection');
   const phoneInput = document.getElementById('phoneInput');
   const queryBtn = document.getElementById('queryBtn');
   const reportSection = document.getElementById('reportSection');
@@ -156,44 +113,124 @@
     setTimeout(() => toast.remove(), 3000);
   };
 
-  // ========== 查询处理 ==========
+  // ========== 数据映射：CloudBase 文档 → 渲染格式 ==========
+  const mapReport = (doc) => ({
+    childName: doc.childName || '',
+    className: doc.className || doc.class || '',
+    updatedAt: doc.updatedAt || doc.date || '',
+    attendance: doc.attendance || { status: 'normal', label: '正常到园' },
+    meals: Array.isArray(doc.meals) ? doc.meals : [],
+    study: Array.isArray(doc.study) ? doc.study : [],
+    performance: Array.isArray(doc.performance) ? doc.performance : [],
+    comment: doc.comment || ''
+  });
+
+  const mapHistoryItem = (doc) => ({
+    date: doc.date || '',
+    summary: doc.summary || (doc.comment ? doc.comment.slice(0, 20) : ''),
+    detail: {
+      attendance: (doc.attendance && doc.attendance.label) || '正常到园',
+      meals: Array.isArray(doc.meals) ? doc.meals.map((m) => (typeof m === 'string' ? m : (m.meal + ' ' + m.status))).join('，') : '',
+      study: Array.isArray(doc.study) ? doc.study.join('、') : '',
+      performance: Array.isArray(doc.performance) ? doc.performance.join('，') : '',
+      comment: doc.comment || ''
+    }
+  });
+
+  // ========== 查询处理（CloudBase） ==========
   const handleQuery = () => {
     const phone = phoneInput.value.trim();
 
     if (!phone) {
-      showToast('请输入手机号。', 'error');
+      showToast('请输入手机号', 'error');
+      return;
+    }
+    if (!/^1\d{10}$/.test(phone)) {
+      showToast('请输入正确的手机号', 'error');
       return;
     }
 
-    // TODO: CloudBase — 替换为数据库查询：db.collection('reports').where({ phone }).get()
-    renderReport(mockReport);
-    renderHistory(mockHistory);
+    if (!dbReady) {
+      showToast('系统正在连接，请稍后重试', 'error');
+      return;
+    }
 
-    reportSection.style.display = 'block';
-    historySection.style.display = 'block';
+    queryBtn.disabled = true;
+    queryBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 查询中...';
 
-    // 滚动到结果区域
-    setTimeout(() => {
-      reportSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+    db.collection('children').where({ parentPhone: phone }).get()
+      .then((res) => {
+        if (!res.data || res.data.length === 0) {
+          showToast('未找到匹配的孩子信息', 'error');
+          queryBtn.disabled = false;
+          queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
+          return null;
+        }
+        const child = res.data[0];
+        return db.collection('daily_reports')
+          .where({ childId: child._id })
+          .orderBy('date', 'desc')
+          .get()
+          .then((reportsRes) => ({ child, reports: reportsRes.data || [] }));
+      })
+      .then((result) => {
+        queryBtn.disabled = false;
+        queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
+
+        if (!result) return;
+        const { child, reports } = result;
+
+        if (reports.length === 0) {
+          showToast('该孩子暂无反馈记录', 'error');
+          reportSection.style.display = 'none';
+          historySection.style.display = 'none';
+          return;
+        }
+
+        const childInfo = {
+          childName: child.name || '',
+          className: child.class || ''
+        };
+
+        const latest = mapReport(Object.assign({}, reports[0], childInfo));
+        const history = reports.map((r) => mapHistoryItem(Object.assign({}, r, childInfo)));
+
+        renderReport(latest);
+        renderHistory(history);
+
+        reportSection.style.display = 'block';
+        historySection.style.display = 'block';
+
+        setTimeout(() => {
+          reportSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      })
+      .catch((err) => {
+        console.error('查询失败:', err);
+        showToast('查询失败，请重试', 'error');
+        queryBtn.disabled = false;
+        queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
+      });
   };
 
   // ========== 渲染成长报告 ==========
   const renderReport = (data) => {
-    const mealsHTML = data.meals.map((m) =>
+    const mealsHTML = (data.meals || []).map((m) =>
       `<div class="df-meal-item">
-        <span class="df-meal-name">${m.meal}</span>
-        <span class="df-meal-status">${m.status}</span>
+        <span class="df-meal-name">${m.meal || ''}</span>
+        <span class="df-meal-status">${m.status || ''}</span>
       </div>`
     ).join('');
 
-    const studyHTML = data.study.map((s) =>
+    const studyHTML = (data.study || []).map((s) =>
       `<li class="df-study-item"><i class="fas fa-check-circle"></i> ${s}</li>`
     ).join('');
 
-    const performanceHTML = data.performance.map((p) =>
+    const performanceHTML = (data.performance || []).map((p) =>
       `<li class="df-perf-item"><i class="fas fa-star"></i> ${p}</li>`
     ).join('');
+
+    const attendanceLabel = (data.attendance && data.attendance.label) || '正常到园';
 
     reportSection.innerHTML = `
       <div class="container">
@@ -202,9 +239,9 @@
             <i class="fas fa-child"></i>
           </div>
           <div class="df-child-info">
-            <h2 class="df-child-name">${data.childName}</h2>
-            <p class="df-child-class"><i class="fas fa-graduation-cap"></i> ${data.className}</p>
-            <p class="df-child-updated"><i class="fas fa-clock"></i> 最近更新：${data.updatedAt}</p>
+            <h2 class="df-child-name">${data.childName || ''}</h2>
+            <p class="df-child-class"><i class="fas fa-graduation-cap"></i> ${data.className || ''}</p>
+            <p class="df-child-updated"><i class="fas fa-clock"></i> 最近更新：${data.updatedAt || ''}</p>
           </div>
         </div>
 
@@ -214,7 +251,7 @@
               <i class="fas fa-calendar-check" style="color: var(--primary);"></i>
             </div>
             <h3 class="df-card-title">今日出勤</h3>
-            <p class="df-card-value df-attendance-normal">✅ ${data.attendance.label}</p>
+            <p class="df-card-value df-attendance-normal">${attendanceLabel}</p>
           </div>
 
           <div class="df-card">
@@ -222,7 +259,7 @@
               <i class="fas fa-utensils" style="color: var(--secondary);"></i>
             </div>
             <h3 class="df-card-title">今日饮食</h3>
-            <div class="df-meals-list">${mealsHTML}</div>
+            <div class="df-meals-list">${mealsHTML || '<p style="font-size:14px;color:var(--text-light);">暂无数据</p>'}</div>
           </div>
 
           <div class="df-card">
@@ -231,7 +268,7 @@
             </div>
             <h3 class="df-card-title">学习内容</h3>
             <p class="df-card-subtitle">今天完成：</p>
-            <ul class="df-study-list">${studyHTML}</ul>
+            <ul class="df-study-list">${studyHTML || '<li style="font-size:14px;color:var(--text-light);">暂无数据</li>'}</ul>
           </div>
 
           <div class="df-card">
@@ -239,7 +276,7 @@
               <i class="fas fa-smile" style="color: #7C3AED;"></i>
             </div>
             <h3 class="df-card-title">课堂表现</h3>
-            <ul class="df-perf-list">${performanceHTML}</ul>
+            <ul class="df-perf-list">${performanceHTML || '<li style="font-size:14px;color:var(--text-light);">暂无数据</li>'}</ul>
           </div>
 
           <div class="df-card">
@@ -247,13 +284,12 @@
               <i class="fas fa-comment-dots" style="color: #EC4899;"></i>
             </div>
             <h3 class="df-card-title">老师评语</h3>
-            <p class="df-card-comment">${data.comment}</p>
+            <p class="df-card-comment">${data.comment || '暂无评语'}</p>
           </div>
         </div>
       </div>
     `;
 
-    // 淡入动画
     reportSection.style.opacity = '0';
     reportSection.style.transform = 'translateY(20px)';
     requestAnimationFrame(() => {
@@ -282,19 +318,19 @@
               </div>
               <div class="df-detail-item">
                 <span class="df-detail-label">饮食</span>
-                <span>${item.detail.meals}</span>
+                <span>${item.detail.meals || '暂无'}</span>
               </div>
               <div class="df-detail-item">
                 <span class="df-detail-label">学习</span>
-                <span>${item.detail.study}</span>
+                <span>${item.detail.study || '暂无'}</span>
               </div>
               <div class="df-detail-item">
                 <span class="df-detail-label">表现</span>
-                <span>${item.detail.performance}</span>
+                <span>${item.detail.performance || '暂无'}</span>
               </div>
               <div class="df-detail-item df-detail-full">
                 <span class="df-detail-label">评语</span>
-                <span>${item.detail.comment}</span>
+                <span>${item.detail.comment || '暂无评语'}</span>
               </div>
             </div>
           </div>
@@ -304,12 +340,11 @@
 
     historyList.innerHTML = historyHTML;
 
-    // 绑定手风琴事件
-    historyList.querySelectorAll('.df-timeline-header').forEach((header) => {
-      header.addEventListener('click', () => {
-        const index = header.getAttribute('data-index');
-        const detail = document.getElementById('detail-' + index);
-        const toggle = header.querySelector('.df-timeline-toggle i');
+    historyList.querySelectorAll('.df-timeline-header').forEach((headerEl) => {
+      headerEl.addEventListener('click', () => {
+        const idx = headerEl.getAttribute('data-index');
+        const detail = document.getElementById('detail-' + idx);
+        const toggle = headerEl.querySelector('.df-timeline-toggle i');
 
         const isOpen = detail.classList.contains('open');
         detail.classList.toggle('open');
