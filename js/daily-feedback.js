@@ -117,23 +117,23 @@
   const mapReport = (doc) => ({
     childName: doc.childName || '',
     className: doc.className || doc.class || '',
-    updatedAt: doc.updatedAt || doc.date || '',
-    attendance: doc.attendance || { status: 'normal', label: '正常到园' },
-    meals: Array.isArray(doc.meals) ? doc.meals : [],
-    study: Array.isArray(doc.study) ? doc.study : [],
-    performance: Array.isArray(doc.performance) ? doc.performance : [],
-    comment: doc.comment || ''
+    updatedAt: doc.date || '',
+    attendance: { label: doc.attendance || '正常到园' },
+    meals: doc.meal ? [{ meal: '饮食', status: doc.meal }] : [],
+    study: doc.learning ? [doc.learning] : [],
+    performance: doc.behavior ? [doc.behavior] : [],
+    comment: doc.remarks || ''
   });
 
   const mapHistoryItem = (doc) => ({
-    date: doc.date || '',
-    summary: doc.summary || (doc.comment ? doc.comment.slice(0, 20) : ''),
+    date: doc.date ? doc.date.slice(0, 10) : '',
+    summary: doc.remarks ? doc.remarks.slice(0, 20) : '',
     detail: {
-      attendance: (doc.attendance && doc.attendance.label) || '正常到园',
-      meals: Array.isArray(doc.meals) ? doc.meals.map((m) => (typeof m === 'string' ? m : (m.meal + ' ' + m.status))).join('，') : '',
-      study: Array.isArray(doc.study) ? doc.study.join('、') : '',
-      performance: Array.isArray(doc.performance) ? doc.performance.join('，') : '',
-      comment: doc.comment || ''
+      attendance: doc.attendance || '正常到园',
+      meals: doc.meal || '',
+      study: doc.learning || '',
+      performance: doc.behavior || '',
+      comment: doc.remarks || ''
     }
   });
 
@@ -169,20 +169,11 @@
         }
 
         const child = res.data[0];
-        console.log('找到孩子:', child.name);
         return db.collection('daily_reports')
           .where({ childId: child._id })
           .orderBy('date', 'desc')
           .get()
-          .then((reportsRes) => {
-            const reports = reportsRes.data || [];
-            // 临时诊断：打印 daily_reports 文档的真实字段名
-            if (reports.length > 0) {
-              console.log('daily_reports 第1条字段名:', Object.keys(reports[0]));
-              console.log('daily_reports 第1条完整数据:', JSON.stringify(reports[0], null, 2));
-            }
-            return { child, reports };
-          });
+          .then((reportsRes) => ({ child, reports: reportsRes.data || [] }));
       })
       .then((result) => {
         queryBtn.disabled = false;
