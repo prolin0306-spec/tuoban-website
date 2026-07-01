@@ -114,10 +114,19 @@
   };
 
   // ========== 数据映射：CloudBase 文档 → 渲染格式 ==========
+  const fmtDate = (v) => {
+    if (!v) return '';
+    const d = typeof v === 'string' ? new Date(v) : v;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  };
+
   const mapReport = (doc) => ({
     childName: doc.childName || '',
     className: doc.className || doc.class || '',
-    updatedAt: doc.date || '',
+    updatedAt: fmtDate(doc.date) || '',
     attendance: { label: doc.attendance || '正常到园' },
     meals: doc.meal ? [{ meal: '饮食', status: doc.meal }] : [],
     study: doc.learning ? [doc.learning] : [],
@@ -126,7 +135,7 @@
   });
 
   const mapHistoryItem = (doc) => ({
-    date: doc.date ? doc.date.slice(0, 10) : '',
+    date: fmtDate(doc.date),
     summary: doc.remarks ? doc.remarks.slice(0, 20) : '',
     detail: {
       attendance: doc.attendance || '正常到园',
