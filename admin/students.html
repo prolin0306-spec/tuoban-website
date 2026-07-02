@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学生管理 — 老师后台</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="adm-layout">
+
+  <!-- 侧边栏 -->
+  <aside class="adm-sidebar" id="sidebar">
+    <div class="adm-sidebar-brand"><i class="fas fa-chalkboard-teacher"></i> 老师后台</div>
+    <nav class="adm-sidebar-nav" id="sidebarNav"></nav>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="adm-main">
+    <header class="adm-topbar">
+      <button class="adm-sidebar-toggle" id="sidebarToggle"><i class="fas fa-bars"></i></button>
+      <span style="font-weight:700;font-size:16px;">学生管理</span>
+      <span class="adm-topbar-info" id="topbarInfo"></span>
+    </header>
+
+    <div class="adm-content">
+      <!-- 搜索 -->
+      <div class="adm-search-bar">
+        <input type="text" id="searchInput" placeholder="搜索姓名或手机号...">
+        <button class="adm-btn adm-btn-primary" id="btnSearch"><i class="fas fa-search"></i> 搜索</button>
+        <button class="adm-btn adm-btn-secondary" id="btnClear">显示全部</button>
+      </div>
+
+      <!-- 学生列表 -->
+      <div id="studentGrid">
+        <div class="adm-loading"><div class="adm-spinner"></div><p style="margin-top:8px;">加载中...</p></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/cloudbase.full.min.js"></script>
+  <script src="js/cloudbase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/common.js"></script>
+  <script>
+    (() => {
+      'use strict';
+
+      if (!window.adminAuth || !window.adminAuth.check()) {
+        window.location.href = 'login.html';
+      }
+
+      const renderStudents = (list) => {
+        const grid = document.getElementById('studentGrid');
+        if (!list || list.length === 0) {
+          grid.innerHTML = `<div class="adm-empty"><i class="fas fa-user-slash"></i><p>暂无学生数据</p></div>`;
+          return;
+        }
+
+        grid.innerHTML = `<div class="adm-student-grid">${list.map((s) => `
+          <div class="adm-student-card">
+            <div class="adm-student-name">${s.name || ''}</div>
+            <div class="adm-student-info"><i class="fas fa-graduation-cap"></i> ${s.class || ''}</div>
+            <div class="adm-student-info"><i class="fas fa-phone"></i> ${s.parentPhone || ''}</div>
+            <div class="adm-student-actions">
+              <a href="report-editor.html?childId=${s._id}" class="adm-btn adm-btn-primary adm-btn-sm">
+                <i class="fas fa-edit"></i> 编辑反馈
+              </a>
+            </div>
+          </div>
+        `).join('')}</div>`;
+      };
+
+      const loadAll = () => {
+        document.getElementById('studentGrid').innerHTML =
+          '<div class="adm-loading"><div class="adm-spinner"></div><p style="margin-top:8px;">加载中...</p></div>';
+
+        window.adminAPI.getStudents().then(renderStudents).catch((err) => {
+          console.error('加载学生失败:', err);
+          window.showToast('加载失败', 'error');
+        });
+      };
+
+      const doSearch = () => {
+        const q = document.getElementById('searchInput').value.trim();
+        if (!q) { loadAll(); return; }
+
+        document.getElementById('studentGrid').innerHTML =
+          '<div class="adm-loading"><div class="adm-spinner"></div><p style="margin-top:8px;">搜索中...</p></div>';
+
+        window.adminAPI.searchStudents(q).then(renderStudents).catch((err) => {
+          console.error('搜索失败:', err);
+          window.showToast('搜索失败', 'error');
+        });
+      };
+
+      const init = () => {
+        window.initSidebar('students.html');
+        window.initHeader();
+
+        document.getElementById('btnSearch').addEventListener('click', doSearch);
+        document.getElementById('btnClear').addEventListener('click', () => {
+          document.getElementById('searchInput').value = '';
+          loadAll();
+        });
+        document.getElementById('searchInput').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') doSearch();
+        });
+
+        waitReady().then((ok) => {
+          if (!ok) { window.showToast('系统连接失败', 'error'); return; }
+          loadAll();
+        });
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>

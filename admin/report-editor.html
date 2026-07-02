@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>每日反馈 — 老师后台</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="adm-layout">
+
+  <!-- 侧边栏 -->
+  <aside class="adm-sidebar" id="sidebar">
+    <div class="adm-sidebar-brand"><i class="fas fa-chalkboard-teacher"></i> 老师后台</div>
+    <nav class="adm-sidebar-nav" id="sidebarNav"></nav>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="adm-main">
+    <header class="adm-topbar">
+      <button class="adm-sidebar-toggle" id="sidebarToggle"><i class="fas fa-bars"></i></button>
+      <span style="font-weight:700;font-size:16px;">每日反馈</span>
+      <span class="adm-topbar-info" id="topbarInfo"></span>
+    </header>
+
+    <div class="adm-content" id="editorContent">
+      <div class="adm-loading"><div class="adm-spinner"></div><p style="margin-top:8px;">加载中...</p></div>
+    </div>
+  </div>
+
+  <script src="../js/cloudbase.full.min.js"></script>
+  <script src="js/cloudbase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/common.js"></script>
+  <script>
+    (() => {
+      'use strict';
+
+      if (!window.adminAuth || !window.adminAuth.check()) {
+        window.location.href = 'login.html';
+      }
+
+      // 获取 URL 参数 childId
+      const params = new URLSearchParams(window.location.search);
+      const childId = params.get('childId');
+
+      // 如果未指定 childId，显示学生选择列表
+      if (!childId) {
+        const initNoChild = () => {
+          window.initSidebar('report-editor.html');
+          window.initHeader();
+
+          waitReady().then((ok) => {
+            if (!ok) { window.showToast('系统连接失败', 'error'); return; }
+
+            window.adminAPI.getStudents().then((students) => {
+              if (!students || students.length === 0) {
+                document.getElementById('editorContent').innerHTML =
+                  '<div class="adm-empty"><i class="fas fa-user-slash"></i><p>暂无学生数据</p></div>';
+                return;
+              }
+
+              document.getElementById('editorContent').innerHTML = `
+                <div class="adm-card">
+                  <div class="adm-card-header"><i class="fas fa-users"></i> 选择学生</div>
+                  <div class="adm-student-grid">${students.map((s) => `
+                    <div class="adm-student-card">
+                      <div class="adm-student-name">${s.name || ''}</div>
+                      <div class="adm-student-info"><i class="fas fa-graduation-cap"></i> ${s.class || ''}</div>
+                      <div class="adm-student-actions">
+                        <a href="report-editor.html?childId=${s._id}" class="adm-btn adm-btn-primary adm-btn-sm">
+                          <i class="fas fa-edit"></i> 填写反馈
+                        </a>
+                      </div>
+                    </div>
+                  `).join('')}</div>
+                </div>
+              `;
+            }).catch(() => { window.showToast('加载失败', 'error'); });
+          });
+        };
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initNoChild);
+        } else {
+          initNoChild();
+        }
+        return;
+      }
+
+      // ========== 反馈编辑表单 ==========
+      let currentStudent = null;
+
+      const renderEditor = (student, existingReport) => {
+        const r = existingReport || {};
+        document.getElementById('editorContent').innerHTML = `
+          <div class="adm-report-meta">
+            <i class="fas fa-child" style="font-size:24px;color:var(--primary);"></i>
+            <span>${student.name} &nbsp;|&nbsp; ${student.class}</span>
+            <span style="margin-left:auto;font-size:14px;color:var(--text-light);">${adminAPI.today()}</span>
+          </div>
+
+          <div class="adm-report-layout">
+            <!-- 出勤 -->
+            <div class="adm-card">
+              <div class="adm-card-header"><i class="fas fa-calendar-check" style="color:var(--primary);"></i> 出勤</div>
+              <div class="adm-radio-group" id="attendanceGroup">
+                <label class="adm-radio${r.attendance === '正常' ? ' checked' : ''}"><input type="radio" name="attendance" value="正常"${r.attendance === '正常' ? ' checked' : ''}> 正常</label>
+                <label class="adm-radio${r.attendance === '请假' ? ' checked' : ''}"><input type="radio" name="attendance" value="请假"${r.attendance === '请假' ? ' checked' : ''}> 请假</label>
+                <label class="adm-radio${r.attendance === '迟到' ? ' checked' : ''}"><input type="radio" name="attendance" value="迟到"${r.attendance === '迟到' ? ' checked' : ''}> 迟到</label>
+              </div>
+            </div>
+
+            <!-- 午餐 -->
+            <div class="adm-card">
+              <div class="adm-card-header"><i class="fas fa-utensils" style="color:var(--secondary);"></i> 午餐</div>
+              <div class="adm-radio-group" id="mealGroup">
+                <label class="adm-radio${r.meal === '全部吃完' ? ' checked' : ''}"><input type="radio" name="meal" value="全部吃完"${r.meal === '全部吃完' ? ' checked' : ''}> 全部吃完</label>
+                <label class="adm-radio${r.meal === '一般' ? ' checked' : ''}"><input type="radio" name="meal" value="一般"${r.meal === '一般' ? ' checked' : ''}> 一般</label>
+                <label class="adm-radio${r.meal === '较少' ? ' checked' : ''}"><input type="radio" name="meal" value="较少"${r.meal === '较少' ? ' checked' : ''}> 较少</label>
+              </div>
+            </div>
+
+            <!-- 学习内容 -->
+            <div class="adm-card">
+              <div class="adm-card-header"><i class="fas fa-book-open" style="color:var(--accent);"></i> 学习内容</div>
+              <textarea class="adm-form-textarea" id="learning" placeholder="今天学习的内容...">${r.learning || ''}</textarea>
+            </div>
+
+            <!-- 课堂表现 -->
+            <div class="adm-card">
+              <div class="adm-card-header"><i class="fas fa-smile" style="color:#7C3AED;"></i> 课堂表现</div>
+              <textarea class="adm-form-textarea" id="behavior" placeholder="课堂表现描述...">${r.behavior || ''}</textarea>
+            </div>
+
+            <!-- 老师评语 -->
+            <div class="adm-card" style="grid-column: 1 / -1;">
+              <div class="adm-card-header"><i class="fas fa-comment-dots" style="color:#EC4899;"></i> 老师评语</div>
+              <textarea class="adm-form-textarea" id="remarks" placeholder="老师评语..." style="min-height:100px;">${r.remarks || ''}</textarea>
+            </div>
+          </div>
+
+          <!-- 课堂照片（预留） -->
+          <div class="adm-card" style="margin-top:16px;">
+            <div class="adm-card-header"><i class="fas fa-camera" style="color:var(--text-light);"></i> 课堂照片（即将上线）</div>
+            <p style="font-size:14px;color:var(--text-light);">照片上传功能开发中，敬请期待。</p>
+          </div>
+
+          <!-- 保存 -->
+          <div style="text-align:center;margin-top:20px;">
+            <button class="adm-btn adm-btn-success" id="btnSave" style="padding:12px 48px;font-size:16px;">
+              <i class="fas fa-save"></i> 保存反馈
+            </button>
+            ${existingReport ? '<p style="margin-top:8px;font-size:13px;color:var(--text-light);">（将更新今日已有记录）</p>' : ''}
+          </div>
+        `;
+
+        // Radio 点击交互
+        document.querySelectorAll('.adm-radio-group').forEach((group) => {
+          group.addEventListener('change', () => {
+            group.querySelectorAll('.adm-radio').forEach((l) => {
+              l.classList.toggle('checked', l.querySelector('input').checked);
+            });
+          });
+        });
+
+        // 保存
+        document.getElementById('btnSave').addEventListener('click', () => {
+          const btn = document.getElementById('btnSave');
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...';
+
+          const data = {
+            childId,
+            attendance: document.querySelector('input[name="attendance"]:checked'),
+            meal: document.querySelector('input[name="meal"]:checked'),
+            learning: document.getElementById('learning').value.trim(),
+            behavior: document.getElementById('behavior').value.trim(),
+            remarks: document.getElementById('remarks').value.trim()
+          };
+
+          data.attendance = data.attendance ? data.attendance.value : '';
+          data.meal = data.meal ? data.meal.value : '';
+
+          window.adminAPI.saveReport(data).then(() => {
+            window.showToast('保存成功');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save"></i> 保存反馈';
+          }).catch((err) => {
+            console.error('保存失败:', err);
+            window.showToast('保存失败，请重试', 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save"></i> 保存反馈';
+          });
+        });
+      };
+
+      const initEditor = () => {
+        window.initSidebar('report-editor.html');
+        window.initHeader();
+
+        waitReady().then((ok) => {
+          if (!ok) { window.showToast('系统连接失败', 'error'); return; }
+
+          Promise.all([
+            window.adminAPI.getStudent(childId),
+            window.adminAPI.getReport(childId)
+          ]).then(([student, report]) => {
+            if (!student) {
+              document.getElementById('editorContent').innerHTML =
+                '<div class="adm-empty"><i class="fas fa-user-slash"></i><p>未找到该学生</p></div>';
+              return;
+            }
+            currentStudent = student;
+            renderEditor(student, report);
+          }).catch((err) => {
+            console.error('加载失败:', err);
+            window.showToast('加载失败', 'error');
+          });
+        });
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initEditor);
+      } else {
+        initEditor();
+      }
+    })();
+  </script>
+</body>
+</html>

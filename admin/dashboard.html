@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>仪表盘 — 老师后台</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="adm-layout">
+
+  <!-- 侧边栏 -->
+  <aside class="adm-sidebar" id="sidebar">
+    <div class="adm-sidebar-brand"><i class="fas fa-chalkboard-teacher"></i> 老师后台</div>
+    <nav class="adm-sidebar-nav" id="sidebarNav"></nav>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="adm-main">
+    <header class="adm-topbar">
+      <button class="adm-sidebar-toggle" id="sidebarToggle"><i class="fas fa-bars"></i></button>
+      <span style="font-weight:700;font-size:16px;">仪表盘</span>
+      <span class="adm-topbar-info" id="topbarInfo"></span>
+    </header>
+
+    <div class="adm-content">
+      <!-- 统计卡片 -->
+      <div class="adm-stats-grid" id="statsGrid">
+        <div class="adm-loading"><div class="adm-spinner"></div><p style="margin-top:8px;">加载中...</p></div>
+      </div>
+
+      <!-- 快捷操作 -->
+      <div class="adm-card">
+        <div class="adm-card-header"><i class="fas fa-bolt" style="color:var(--accent);"></i> 快捷操作</div>
+        <div class="adm-actions-grid">
+          <a href="students.html" class="adm-action-btn">
+            <i class="fas fa-users"></i> 学生管理
+          </a>
+          <a href="report-editor.html" class="adm-action-btn">
+            <i class="fas fa-edit"></i> 每日反馈
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/cloudbase.full.min.js"></script>
+  <script src="js/cloudbase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/common.js"></script>
+  <script>
+    (() => {
+      'use strict';
+
+      if (!window.adminAuth || !window.adminAuth.check()) {
+        window.location.href = 'login.html';
+      }
+
+      const init = () => {
+        window.initSidebar('dashboard.html');
+        window.initHeader();
+
+        waitReady().then((ok) => {
+          if (!ok) { window.showToast('系统连接失败', 'error'); return; }
+
+          Promise.all([
+            window.adminAPI.getStudents(),
+            window.adminAPI.getTodayReports()
+          ]).then(([students, reports]) => {
+            const total = students.length;
+            const done = reports.length;
+            const pending = total - done;
+
+            document.getElementById('statsGrid').innerHTML = `
+              <div class="adm-stat-card">
+                <div class="adm-stat-icon" style="background:var(--primary-light);color:var(--primary);">
+                  <i class="fas fa-users"></i>
+                </div>
+                <div>
+                  <div class="adm-stat-value">${total}</div>
+                  <div class="adm-stat-label">学生总数</div>
+                </div>
+              </div>
+              <div class="adm-stat-card">
+                <div class="adm-stat-icon" style="background:var(--secondary-light);color:var(--secondary);">
+                  <i class="fas fa-check-circle"></i>
+                </div>
+                <div>
+                  <div class="adm-stat-value">${done}</div>
+                  <div class="adm-stat-label">今日已填写</div>
+                </div>
+              </div>
+              <div class="adm-stat-card">
+                <div class="adm-stat-icon" style="background:var(--accent-light);color:var(--accent);">
+                  <i class="fas fa-clock"></i>
+                </div>
+                <div>
+                  <div class="adm-stat-value">${pending}</div>
+                  <div class="adm-stat-label">今日未填写</div>
+                </div>
+              </div>
+            `;
+          }).catch((err) => {
+            console.error('加载仪表盘失败:', err);
+            window.showToast('加载失败，请刷新', 'error');
+          });
+        });
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
