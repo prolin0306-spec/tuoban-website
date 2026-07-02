@@ -5,6 +5,7 @@
   const ENV_ID = 'tuoban-booking-d6g862sk51b7dbb40';
 
   let db = null;
+  let app = null;
   let dbReady = false;
 
   const initCloudBase = () => {
@@ -13,7 +14,6 @@
       return;
     }
 
-    let app;
     try {
       app = cloudbase.init({ env: ENV_ID });
     } catch (err) {
@@ -178,20 +178,27 @@
         }
 
         const child = res.data[0];
-        return db.collection('daily_reports')
-          .where({ childId: child._id })
-          .orderBy('date', 'desc')
-          .get()
-          .then((reportsRes) => ({ child, reports: reportsRes.data || [] }));
+        return Promise.all([
+          db.collection('daily_reports')
+            .where({ childId: child._id })
+            .orderBy('date', 'desc')
+            .get()
+            .then((reportsRes) => reportsRes.data || []),
+          db.collection('mistakes')
+            .where({ childId: child._id })
+            .orderBy('date', 'desc')
+            .get()
+            .then((r) => r.data || [])
+        ]).then(([reports, mistakes]) => ({ child, reports, mistakes }));
       })
       .then((result) => {
         queryBtn.disabled = false;
         queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
 
         if (!result) return;
-        const { child, reports } = result;
+        const { child, reports, mistakes } = result;
 
-        if (reports.length === 0) {
+        if (reports.length === 0 && mistakes.length === 0) {
           showToast('该孩子暂无反馈记录', 'error');
           reportSection.style.display = 'none';
           historySection.style.display = 'none';
@@ -203,17 +210,24 @@
           className: child.class || ''
         };
 
-        const latest = mapReport(Object.assign({}, reports[0], childInfo));
-        const history = reports.map((r) => mapHistoryItem(Object.assign({}, r, childInfo)));
+        if (reports.length > 0) {
+          const latest = mapReport(Object.assign({}, reports[0], childInfo));
+          const history = reports.map((r) => mapHistoryItem(Object.assign({}, r, childInfo)));
+          renderReport(latest);
+          renderHistory(history);
+          reportSection.style.display = 'block';
+          historySection.style.display = 'block';
+        } else {
+          reportSection.style.display = 'none';
+          historySection.style.display = 'none';
+        }
 
-        renderReport(latest);
-        renderHistory(history);
-
-        reportSection.style.display = 'block';
-        historySection.style.display = 'block';
+        // 渲染错题
+        renderMistakes(mistakes);
 
         setTimeout(() => {
-          reportSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const target = reports.length > 0 ? reportSection : document.getElementById('mistakesSection');
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
       })
       .catch((err) => {
@@ -368,6 +382,70 @@
         }
       });
     });
+  };
+
+  // ========== 渲染错题 ==========
+  const renderMistakes = (mistakes) => {
+    let section = document.getElementById('mistakesSection');
+    if (!section) {
+      section = document.createElement('section');
+      section.id = 'mistakesSection';
+      section.className = 'df-history-section';
+      section.style.display = 'none';
+      historySection.parentNode.insertBefore(section, historySection.nextSibling);
+    }
+
+    if (!mistakes || mistakes.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const subjects = { '语文': '#2563EB', '数学': '#059669', '英语': '#D97706' };
+
+    section.innerHTML = `
+      <div class="container">
+        <h2 class="df-history-title"><i class="fas fa-exclamation-triangle"></i> 错题本</h2>
+        <div class="df-mistakes-grid" id="mistakesGrid">
+          ${mistakes.map((m) => `
+            <div class="df-mistake-card" id="mistake-${m._id}">
+              <div class="df-mistake-image-wrap">
+                <div class="df-mistake-placeholder"><i class="fas fa-image"></i></div>
+              </div>
+              <div class="df-mistake-info">
+                <span class="df-mistake-subject" style="background:${subjects[m.subject] || '#64748B'}20;color:${subjects[m.subject] || '#64748B'}">${m.subject || ''}</span>
+                <span class="df-mistake-date">${m.date || ''}</span>
+              </div>
+              ${m.note ? `<p class="df-mistake-note">${m.note}</p>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    section.style.display = 'block';
+
+    // 异步加载图片
+    if (app) {
+      mistakes.forEach((m) => {
+        if (!m.imageFileID) return;
+        app.getTempFileURL({ fileList: [m.imageFileID] })
+          .then((r) => {
+            const url = r.fileList && r.fileList[0] ? r.fileList[0].tempFileURL : '';
+            if (!url) return;
+            const card = document.getElementById('mistake-' + m._id);
+            if (!card) return;
+            const wrap = card.querySelector('.df-mistake-image-wrap');
+            wrap.innerHTML = `<img src="${url}" alt="错题" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" class="mistake-img">`;
+            wrap.querySelector('img').addEventListener('click', () => {
+              const lb = document.createElement('div');
+              lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+              lb.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;border-radius:8px;">`;
+              lb.addEventListener('click', () => lb.remove());
+              document.body.appendChild(lb);
+            });
+          }).catch(() => {});
+      });
+    }
   };
 
   // ========== 绑定事件 ==========

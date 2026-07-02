@@ -76,6 +76,44 @@
         });
     },
 
+    // --- 错题 ---
+    getMistakes(childId) {
+      return db().collection('mistakes')
+        .where({ childId })
+        .orderBy('date', 'desc')
+        .get()
+        .then((r) => r.data || []);
+    },
+
+    uploadMistakeImage(file) {
+      const app = window.adminApp;
+      const cloudPath = 'mistakes/' + Date.now() + '_' + file.name;
+      return app.uploadFile({ cloudPath, filePath: file });
+    },
+
+    saveMistake(data) {
+      const doc = {
+        childId: data.childId,
+        date: adminAPI.today(),
+        subject: data.subject || '',
+        imageFileID: data.imageFileID || '',
+        note: data.note || '',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      return db().collection('mistakes').add(doc);
+    },
+
+    deleteMistake(id) {
+      return db().collection('mistakes').doc(id).remove();
+    },
+
+    getMistakeImageURL(fileID) {
+      const app = window.adminApp;
+      return app.getTempFileURL({ fileList: [fileID] })
+        .then((r) => r.fileList && r.fileList[0] ? r.fileList[0].tempFileURL : '');
+    },
+
     // --- 工具 ---
     today() {
       const d = new Date();

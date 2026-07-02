@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>错题管理 — 老师后台</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="adm-layout">
+
+  <!-- 侧边栏 -->
+  <aside class="adm-sidebar" id="sidebar">
+    <div class="adm-sidebar-brand"><i class="fas fa-chalkboard-teacher"></i> 老师后台</div>
+    <nav class="adm-sidebar-nav" id="sidebarNav"></nav>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="adm-main">
+    <header class="adm-topbar">
+      <button class="adm-sidebar-toggle" id="sidebarToggle"><i class="fas fa-bars"></i></button>
+      <span style="font-weight:700;font-size:16px;">错题管理</span>
+      <span class="adm-topbar-info" id="topbarInfo"></span>
+    </header>
+
+    <div class="adm-content">
+      <!-- 上传错题 -->
+      <div class="adm-card" style="margin-bottom:24px;">
+        <div class="adm-card-header"><i class="fas fa-upload"></i> 上传错题</div>
+
+        <div class="adm-form-group">
+          <label class="adm-form-label">选择学生</label>
+          <select id="mistakeStudent" class="adm-form-select">
+            <option value="">请选择学生</option>
+          </select>
+        </div>
+
+        <div class="adm-form-group">
+          <label class="adm-form-label">科目</label>
+          <div class="adm-radio-group" id="subjectGroup">
+            <label class="adm-radio checked"><input type="radio" name="subject" value="语文" checked> 语文</label>
+            <label class="adm-radio"><input type="radio" name="subject" value="数学"> 数学</label>
+            <label class="adm-radio"><input type="radio" name="subject" value="英语"> 英语</label>
+          </div>
+        </div>
+
+        <div class="adm-form-group">
+          <label class="adm-form-label">错题照片</label>
+          <input type="file" id="mistakeImage" accept="image/*" style="display:block;">
+          <div id="imagePreview" style="margin-top:8px;"></div>
+        </div>
+
+        <div class="adm-form-group">
+          <label class="adm-form-label">备注</label>
+          <textarea class="adm-form-textarea" id="mistakeNote" placeholder="错题说明（可选）..."></textarea>
+        </div>
+
+        <button class="adm-btn adm-btn-primary" id="btnUpload">
+          <i class="fas fa-cloud-upload-alt"></i> 上传错题
+        </button>
+      </div>
+
+      <!-- 已上传错题列表 -->
+      <div class="adm-card">
+        <div class="adm-card-header"><i class="fas fa-list"></i> 错题记录</div>
+        <div class="adm-form-group">
+          <select id="filterStudent" class="adm-form-select" style="max-width:300px;">
+            <option value="">全部学生</option>
+          </select>
+        </div>
+        <div id="mistakesList">
+          <div class="adm-empty"><i class="fas fa-inbox"></i><p>请选择学生查看错题</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/cloudbase.full.min.js"></script>
+  <script src="js/cloudbase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/common.js"></script>
+  <script>
+    (() => {
+      'use strict';
+
+      if (!window.adminAuth || !window.adminAuth.check()) {
+        window.location.href = 'login.html';
+      }
+
+      let students = [];
+      let currentMistakes = [];
+
+      // 填充学生下拉框
+      const populateStudentSelects = () => {
+        const selects = ['mistakeStudent', 'filterStudent'];
+        selects.forEach((id) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.innerHTML = id === 'mistakeStudent'
+            ? '<option value="">请选择学生</option>'
+            : '<option value="">全部学生</option>';
+          students.forEach((s) => {
+            el.innerHTML += `<option value="${s._id}">${s.name} (${s.class})</option>`;
+          });
+        });
+      };
+
+      // 加载错题列表
+      const loadMistakes = (childId) => {
+        const container = document.getElementById('mistakesList');
+        container.innerHTML = '<div class="adm-loading"><div class="adm-spinner"></div></div>';
+
+        const promise = childId
+          ? window.adminAPI.getMistakes(childId)
+          : Promise.all(students.map((s) => window.adminAPI.getMistakes(s._id)))
+              .then((results) => results.flat().sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+
+        promise.then((list) => {
+          currentMistakes = list;
+          if (!list || list.length === 0) {
+            container.innerHTML = '<div class="adm-empty"><i class="fas fa-inbox"></i><p>暂无错题记录</p></div>';
+            return;
+          }
+
+          // 异步加载图片
+          const renderList = () => {
+            container.innerHTML = `<div style="display:flex;flex-direction:column;gap:12px;">${list.map((m) => `
+              <div class="adm-student-card" style="display:flex;gap:16px;align-items:flex-start;">
+                <div class="mistake-thumb" id="thumb-${m._id}" style="width:120px;height:120px;background:var(--bg);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;cursor:pointer;">
+                  <i class="fas fa-image" style="font-size:32px;color:var(--text-light);"></i>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;margin-bottom:4px;">
+                    ${students.find((s) => s._id === m.childId)?.name || ''}
+                    <span style="display:inline-block;background:var(--primary-light);color:var(--primary);padding:2px 8px;border-radius:4px;font-size:12px;margin-left:8px;">${m.subject || ''}</span>
+                  </div>
+                  <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${m.date || ''}</div>
+                  <div style="font-size:14px;color:var(--text);">${m.note || '无备注'}</div>
+                </div>
+                <button class="adm-btn adm-btn-sm" style="background:#FEE2E2;color:#EF4444;flex-shrink:0;" data-delete="${m._id}">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            `).join('')}</div>`;
+
+            // 加载图片
+            list.forEach((m) => {
+              if (!m.imageFileID) return;
+              window.adminAPI.getMistakeImageURL(m.imageFileID).then((url) => {
+                const thumb = document.getElementById('thumb-' + m._id);
+                if (thumb && url) {
+                  thumb.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
+                  thumb.addEventListener('click', () => {
+                    const lb = document.createElement('div');
+                    lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+                    lb.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;border-radius:8px;">`;
+                    lb.addEventListener('click', () => lb.remove());
+                    document.body.appendChild(lb);
+                  });
+                }
+              });
+            });
+
+            // 删除按钮
+            container.querySelectorAll('[data-delete]').forEach((btn) => {
+              btn.addEventListener('click', () => {
+                if (!confirm('确定删除这条错题记录？')) return;
+                const id = btn.getAttribute('data-delete');
+                window.adminAPI.deleteMistake(id).then(() => {
+                  window.showToast('已删除');
+                  loadMistakes(document.getElementById('filterStudent').value);
+                }).catch(() => window.showToast('删除失败', 'error'));
+              });
+            });
+          };
+
+          renderList();
+        }).catch((err) => {
+          console.error('加载错题失败:', err);
+          container.innerHTML = '<div class="adm-empty"><i class="fas fa-exclamation-circle"></i><p>加载失败</p></div>';
+        });
+      };
+
+      // 上传
+      const doUpload = () => {
+        const childId = document.getElementById('mistakeStudent').value;
+        if (!childId) { window.showToast('请选择学生', 'error'); return; }
+
+        const fileInput = document.getElementById('mistakeImage');
+        const file = fileInput.files[0];
+        if (!file) { window.showToast('请选择照片', 'error'); return; }
+
+        const subject = document.querySelector('input[name="subject"]:checked');
+        const subjectVal = subject ? subject.value : '语文';
+        const note = document.getElementById('mistakeNote').value.trim();
+
+        const btn = document.getElementById('btnUpload');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...';
+
+        window.adminAPI.uploadMistakeImage(file).then((result) => {
+          return window.adminAPI.saveMistake({
+            childId,
+            subject: subjectVal,
+            imageFileID: result.fileID,
+            note
+          });
+        }).then(() => {
+          window.showToast('上传成功');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 上传错题';
+          fileInput.value = '';
+          document.getElementById('imagePreview').innerHTML = '';
+          document.getElementById('mistakeNote').value = '';
+          loadMistakes(document.getElementById('filterStudent').value);
+        }).catch((err) => {
+          console.error('上传失败:', err);
+          window.showToast('上传失败，请重试', 'error');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 上传错题';
+        });
+      };
+
+      // 图片预览
+      document.getElementById('mistakeImage').addEventListener('change', function() {
+        const file = this.files[0];
+        const preview = document.getElementById('imagePreview');
+        if (!file) { preview.innerHTML = ''; return; }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          preview.innerHTML = `<img src="${e.target.result}" style="max-width:200px;max-height:200px;border-radius:8px;border:1px solid var(--border);">`;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      // Subject radio
+      document.getElementById('subjectGroup').addEventListener('change', function() {
+        this.querySelectorAll('.adm-radio').forEach((l) => {
+          l.classList.toggle('checked', l.querySelector('input').checked);
+        });
+      });
+
+      const init = () => {
+        window.initSidebar('mistakes.html');
+        window.initHeader();
+
+        document.getElementById('btnUpload').addEventListener('click', doUpload);
+        document.getElementById('filterStudent').addEventListener('change', function() {
+          loadMistakes(this.value);
+        });
+
+        waitReady().then((ok) => {
+          if (!ok) { window.showToast('系统连接失败', 'error'); return; }
+
+          window.adminAPI.getStudents().then((list) => {
+            students = list;
+            populateStudentSelects();
+          }).catch(() => { window.showToast('加载学生失败', 'error'); });
+        });
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>

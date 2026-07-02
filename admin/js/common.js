@@ -32,7 +32,8 @@
     const items = [
       { href: 'dashboard.html', icon: 'fa-th-large', label: '仪表盘' },
       { href: 'students.html', icon: 'fa-users', label: '学生管理' },
-      { href: 'report-editor.html', icon: 'fa-edit', label: '每日反馈' }
+      { href: 'report-editor.html', icon: 'fa-edit', label: '每日反馈' },
+      { href: 'mistakes.html', icon: 'fa-exclamation-triangle', label: '错题管理' }
     ];
     nav.innerHTML = items.map((item) =>
       `<a href="${item.href}" class="adm-nav-item${current === item.href ? ' active' : ''}">
