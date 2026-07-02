@@ -178,18 +178,29 @@
         }
 
         const child = res.data[0];
-        return Promise.all([
-          db.collection('daily_reports')
-            .where({ childId: child._id })
-            .orderBy('date', 'desc')
-            .get()
-            .then((reportsRes) => reportsRes.data || []),
-          db.collection('mistakes')
-            .where({ childId: child._id })
-            .orderBy('date', 'desc')
-            .get()
-            .then((r) => r.data || [])
-        ]).then(([reports, mistakes]) => ({ child, reports, mistakes }));
+
+        // 诊断：查 mistakes 全集
+        db.collection('mistakes').limit(5).get().then((all) => {
+          console.log('mistakes 全集(limit5):', JSON.stringify(all.data));
+        });
+
+        const reportsP = db.collection('daily_reports')
+          .where({ childId: child._id })
+          .orderBy('date', 'desc')
+          .get()
+          .then((r) => r.data || []);
+
+        const mistakesP = db.collection('mistakes')
+          .where({ childId: child._id })
+          .orderBy('date', 'desc')
+          .get()
+          .then((r) => {
+            console.log('mistakes by childId:', JSON.stringify(r.data));
+            return r.data || [];
+          });
+
+        return Promise.all([reportsP, mistakesP])
+          .then(([reports, mistakes]) => ({ child, reports, mistakes }));
       })
       .then((result) => {
         queryBtn.disabled = false;
