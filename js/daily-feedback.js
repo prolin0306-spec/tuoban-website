@@ -189,7 +189,13 @@
             .orderBy('date', 'desc')
             .get()
             .then((r) => r.data || [])
-        ]).then(([reports, mistakes]) => ({ child, reports, mistakes }));
+        ]).then(([reports, mistakes]) => {
+          console.log('========== 错题调试 ==========');
+          console.log('child:', child.name);
+          console.log('mistakes 查询结果:', mistakes);
+          console.log('mistakes 数量:', mistakes.length);
+          return { child, reports, mistakes };
+        });
       })
       .then((result) => {
         queryBtn.disabled = false;
@@ -197,6 +203,9 @@
 
         if (!result) return;
         const { child, reports, mistakes } = result;
+
+        console.log('进入渲染, mistakes.length:', mistakes.length);
+        console.log('reports.length:', reports.length);
 
         if (reports.length === 0 && mistakes.length === 0) {
           showToast('该孩子暂无反馈记录', 'error');
@@ -386,6 +395,7 @@
 
   // ========== 渲染错题 ==========
   const renderMistakes = (mistakes) => {
+    console.log('renderMistakes 被调用, mistakes:', mistakes);
     let section = document.getElementById('mistakesSection');
     if (!section) {
       section = document.createElement('section');
@@ -393,12 +403,16 @@
       section.className = 'df-history-section';
       section.style.display = 'none';
       historySection.parentNode.insertBefore(section, historySection.nextSibling);
+      console.log('创建了 mistakesSection', section);
     }
 
     if (!mistakes || mistakes.length === 0) {
+      console.log('mistakes 为空，隐藏区域');
       section.style.display = 'none';
       return;
     }
+
+    console.log('渲染', mistakes.length, '条错题');
 
     const subjects = { '语文': '#2563EB', '数学': '#059669', '英语': '#D97706' };
 
