@@ -131,6 +131,37 @@ try {
   await evaluate(`document.getElementById("dateSelect").value=${JSON.stringify(today)};document.getElementById("dateSelect").dispatchEvent(new Event("change"))`);
   await until('document.querySelector(".hw-student")?.dataset.color==="green"');
  });
+ await check('create book keeps mini-program defaults and does not alter existing plans',async()=>{
+  const plansBefore=JSON.stringify(data.hw_daily_plans);
+  await evaluate(`(()=>{document.getElementById('bookStudent').value='student-b';document.getElementById('bookName').value='网页练习册';document.getElementById('bookSubject').value='math';document.getElementById('bookTotal').value='24';document.getElementById('bookWorkload').value='5';document.getElementById('bookUnit').value='页';document.getElementById('bookForm').requestSubmit()})()`);
+  await until('document.body.innerText.includes("已新增作业本“网页练习册”")');
+  const book=data.hw_homework_books.find(row=>row.name==='网页练习册');assert.ok(book);
+  assert.deepEqual({studentId:book.studentId,classId:book.classId,subject:book.subject,totalAmount:book.totalAmount,
+   workloadPerUnit:book.workloadPerUnit,unit:book.unit,completedAmount:book.completedAmount,isActive:book.isActive},
+  {studentId:'student-b',classId:'class-a',subject:'math',totalAmount:24,workloadPerUnit:5,unit:'页',completedAmount:0,isActive:true});
+  assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
+ });
+ await check('generate today plan is explicit, one-time and does not run on refresh',async()=>{
+  const writesBefore=mock.writes;
+  await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"] .hw-generate').click()`);
+  await until('document.body.innerText.includes("已为 虚构学生乙 生成 2 项今日计划")');
+  assert.equal(data.hw_daily_plans.filter(row=>row.studentId==='student-b'&&row.date===today).length,2);
+  assert.ok(mock.writes>writesBefore);
+  const afterGenerate=mock.writes;
+  await evaluate('document.getElementById("refreshButton").click()');
+  await until('document.querySelector(`.hw-student[data-student-id="student-b"] .hw-task`)!==null');
+  assert.equal(mock.writes,afterGenerate);
+  assert.equal(await evaluate('document.querySelector(`.hw-student[data-student-id="student-b"] .hw-generate`)===null'),true);
+ });
+ await check('record editor preserves explicit zero and updates one record',async()=>{
+  await evaluate(`(()=>{const card=document.querySelector('.hw-student[data-student-id="student-b"]');card.open=true;const row=card.querySelector('.hw-task[data-book-id="book-d"]');const input=row.querySelector('[data-record-input="book-d"]');input.value='0';row.querySelector('button').click()})()`);
+  await until('document.body.innerText.includes("已保存 虚构学生乙 · 测试作业d：0 页")');
+  const records=data.hw_daily_records.filter(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today);
+  assert.equal(records.length,1);assert.equal(records[0].actualAmount,0);assert.equal(records[0].status,'partial');
+  assert.equal(data.hw_daily_plans.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today).isCompleted,false);
+  await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"]').open=true`);
+  assert.equal(await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"] [data-record-input="book-d"]').value`),'0');
+ });
  await check('mobile layout, navigation and expandable tasks',async()=>{
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
@@ -187,8 +218,8 @@ try {
   const methods=await evaluate(`(()=>{const app=cloudbase.init({env:'test-env'});return [typeof app.callFunction,typeof app.auth.signInWithPassword,typeof app.auth.getSession,typeof app.auth.signOut]})()`);
   assert.deepEqual(methods,['function','function','function','function']);
  });
- assert.equal(mock.writes,0);
- console.log('RESULT '+passes+' browser checks passed; simulated DB writes=0; external requests blocked='+blocked);
+ assert.ok(mock.writes>=6);
+ console.log('RESULT '+passes+' browser checks passed; simulated DB writes='+mock.writes+'; external requests blocked='+blocked);
 } finally {
  if(socket){for(const p of pending.values())clearTimeout(p.timer);socket.close();}
  chrome.kill();await new Promise(r=>chrome.exitCode!==null?r():chrome.once('exit',r));

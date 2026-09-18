@@ -1,22 +1,32 @@
-# 官网只读作业云函数
+# 官网作业录入云函数
 
-后续唯一部署来源为 **tuoban-website/cloudfunctions/webHomework/**，配置为官网根目录的 `cloudbaserc.webHomework.json`。homework-manager 中旧副本保留作参考，不应再从该副本部署同名函数。线上函数应始终使用该目录和配置发布。
+唯一部署来源为 **tuoban-website/cloudfunctions/webHomework/**，部署参数在官网根目录的 `cloudbaserc.webHomework.json`。homework-manager 中的原云函数继续作为业务规则基准，不从那里部署 `webHomework`。
 
-仅支持 `session`、`classes`、`workspace`。每个请求通过平台身份、启用中的老师映射、老师角色和班级权限检查。作业业务数据只读 `hw_*`；`integration_teacher_links` 仅作为既有设计中的身份映射读取，不写入。禁止匿名调用、客户端指定老师身份、任意集合和写入 action。
+允许的 action 只有：
 
-上线前需要人工核实官网域名已加入 CloudBase Web 安全来源，并核对 CloudBase 用户与 `hw_teachers` 的关联、班级/代班权限、数据库索引和已有规则。映射字段为 `authUid`、`authEnvId`、`homeworkEnvId`、`homeworkTeacherId`、`status: active`；两个环境字段必须与函数实际环境一致。`WEB_HOMEWORK_ENV_ID` 也必须匹配实际环境。不提供自动建表、初始化数据或修复脚本。
+- `session`、`classes`、`workspace`：读取老师会话、获授权班级和工作台数据。
+- `createBook`：为获授权班级中的启用学生新增 `hw_homework_books`，字段和默认值沿用小程序 `books/add`；不自动改动计划。
+- `generateTodayPlan`：显式为一个学生生成当天计划。复用小程序的工作日、剩余量和整数分配规则；当天任一计划已存在时整体拒绝，没有剩余任务时不产生成功写入，不删除或重建未来计划。
+- `saveDailyRecord`：新增或更新学生当天同一作业本的唯一记录，同步 `hw_daily_plans.isCompleted` 和 `hw_homework_books.completedAmount`。重复保存按“新实际量 - 旧实际量”更新累计量；允许实际完成量为 0，未提交仍保持无记录状态。累计量必须位于 `0..totalAmount`。
 
-预警和优先级纯计算来源：homework-manager 的 `cloudfunctions/plans/common/planEngine.js` 中 `buildProjection`、`countWorkdays`、`buildAlerts`，以及 `cloudfunctions/plans/index.js` 中 `calcPriorityScore`。没有引入原计划引擎、调用 `plans.today` 或生成计划。工作日以中国日期为输入，用 UTC 日期算术避免服务端时区差异。
+每次请求从 CloudBase SDK 网关读取真实登录身份，再核对唯一启用的 `integration_teacher_links`、`hw_teachers` 状态与角色，以及 `classIds`/代班班级和学生归属。浏览器不能指定老师身份、集合名或任意 action。所有写操作都在数据库事务内执行，写集合只限 `hw_homework_books`、`hw_daily_plans`、`hw_daily_records`，写字段由 repository 白名单约束。记录、计划完成状态和作业本累计量在同一事务中提交或回滚。
 
-优先级公式：`0.5*risk + 0.3*min(risk*0.6,1) + 0.1*urgency + 0.1*capacityGap`，保留两位小数。颜色按配置的预计完成率阈值，容量预警另列；同色按分数降序，未知排末位。缺失可选阈值/容量沿用小程序默认值 0.8、0.6、40；无有效学期开始日期不虚构优先级。历史日期没有当时进度快照，不提供学期预测或优先级。
+服务端“今天”固定按 `Asia/Shanghai`（UTC+08:00）换算，生成计划和未来日期校验不使用运行时默认时区。
 
-实际完成率为所选日计划任务的实际负载 / 计划负载；任一计划任务未记录、重复或数据不足时不展示数值。没有计划只提示“尚未生成计划”，实际记录仍可查看。刷新、日期/班级筛选只调用读取接口；退出仅注销认证会话，不写业务集合。
+纯计算规则抽取自 homework-manager：
 
-本地测试（模拟数据库，不连接云端）：
+- `cloudfunctions/common/planEngine.js`：`buildProjection`、`countWorkdays`、`distributeIntegers`、`buildAlerts`。
+- `cloudfunctions/plans/index.js`：`calcPriorityScore`、红黄绿排序和完成状态。
+- `cloudfunctions/books/index.js`：作业本字段、默认值、学生归属和启用状态。
+- `cloudfunctions/plans/index.js`：记录字段、实际量取整、完成状态、作业本累计完成量。
+
+小程序的 `generatePlan()` 会删除并重建今天起的计划，`books/add` 和 `plans/submit` 也会触发该重算。官网 V1 为保护已有计划，不调用这条写路径，只用相同算法算出当天第一份分配并写入当天；新增作业本和保存完成量也不会重建未来计划。
+
+本地测试不会连接 CloudBase：
 
 ```sh
 node --test tests/homework-api.test.js tests/webHomework.test.js
 node tests/homework-browser.mjs
 ```
 
-浏览器测试需要 Node >=22 和本机 Chrome，使用临时浏览器配置，拦截非本地请求。发布后仍需从 GitHub Pages 正式域名验证 Web 安全来源、登录会话和只读查询链路。
+浏览器测试需要 Node >=22 和本机 Chrome，使用临时浏览器配置并拦截所有非本地请求。部署前需再次核对生产索引、事务能力、Web 安全来源及数据库安全规则仍禁止浏览器直接写 `hw_*`。

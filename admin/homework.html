@@ -19,7 +19,7 @@
       <strong>作业工作台</strong><span class="adm-topbar-info" id="topbarInfo"></span>
     </header>
     <div class="adm-content hw-content">
-      <div class="hw-heading"><div><h1>作业工作台</h1><p>查看今日计划、实际完成、预警原因与优先级。</p></div><span class="hw-readonly">只读查看</span></div>
+      <div class="hw-heading"><div><h1>作业录入工作台</h1><p>查看并生成今日计划，录入实际完成量，维护学生作业本。</p></div><span class="hw-readonly">受控录入 V1</span></div>
       <section class="adm-card hw-login" id="loginPanel" hidden>
         <h2>验证作业访问权限</h2>
         <p>请输入已开通作业权限的账号。原后台登录不会自动获得作业权限。</p>
@@ -39,6 +39,19 @@
           <label for="dateSelect">查看日期<input type="date" id="dateSelect" class="adm-form-input"></label>
           <button id="refreshButton" class="adm-btn adm-btn-secondary">刷新</button>
         </div>
+        <section class="adm-card hw-book-panel">
+          <h2>新增作业本</h2>
+          <form id="bookForm" class="hw-book-form">
+            <label for="bookStudent">学生<select id="bookStudent" class="adm-form-select" required></select></label>
+            <label for="bookName">作业本名称<input id="bookName" class="adm-form-input" maxlength="100" required></label>
+            <label for="bookSubject">科目<input id="bookSubject" class="adm-form-input" maxlength="32" value="other" required></label>
+            <label for="bookTotal">总量<input id="bookTotal" class="adm-form-input" type="number" min="1" max="1000000" step="1" required></label>
+            <label for="bookWorkload">单位负载<input id="bookWorkload" class="adm-form-input" type="number" min="1" max="1000000" step="1" value="5" required></label>
+            <label for="bookUnit">单位<input id="bookUnit" class="adm-form-input" maxlength="16" value="页" required></label>
+            <button id="createBookButton" class="adm-btn adm-btn-primary" type="submit">新增作业本</button>
+          </form>
+          <p class="hw-muted">新增后不会自动改动已有计划；没有今日计划时可在学生卡片中手动生成。</p>
+        </section>
         <div id="homeworkSummary" class="hw-summary" aria-live="polite"></div>
         <div id="studentCards" class="hw-cards"></div>
       </section>

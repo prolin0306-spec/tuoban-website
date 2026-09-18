@@ -12,6 +12,12 @@
 .hw-controls { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; }
 .hw-controls label { display: grid; gap: 8px; min-width: 180px; flex: 1; }
 .hw-controls select, .hw-controls input { min-height: 44px; }
+.hw-book-panel { margin-top: 16px; }
+.hw-book-panel h2 { font-size: 18px; margin-bottom: 14px; }
+.hw-book-form { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 14px; align-items: end; }
+.hw-book-form label { display: grid; gap: 7px; font-size: 14px; }
+.hw-book-form input, .hw-book-form select, .hw-book-form button { min-height: 44px; }
+.hw-book-panel > .hw-muted { margin-top: 12px; }
 .hw-summary { color: var(--text-light); margin: 20px 0; line-height: 1.7; }
 .hw-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
 .hw-student { border-top: 4px solid var(--border); padding: 20px; min-width: 0; overflow-wrap: anywhere; }
@@ -31,6 +37,11 @@
 .hw-task { border-top: 1px solid var(--border); padding: 14px 0; display: grid; gap: 6px; line-height: 1.6; }
 .hw-task h3 { font-size: 15px; }
 .hw-task-values { display: flex; gap: 12px; flex-wrap: wrap; }
+.hw-record { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.hw-record label { display: grid; gap: 5px; font-size: 13px; }
+.hw-record input { width: 120px; min-height: 40px; }
+.hw-record button, .hw-generate { min-height: 40px; }
+.hw-action-result { font-size: 13px; min-height: 20px; }
 .hw-notice { background: var(--primary-light); color: #1e3a5f; border-radius: 8px; padding: 16px; margin: 16px 0; line-height: 1.6; }
 .hw-notice[data-type="error"] { color: #991b1b; background: #fef2f2; }
 .hw-empty { padding: 32px 16px; text-align: center; color: var(--text-light); }
@@ -41,6 +52,8 @@
   .hw-controls { padding: 16px; }
   .hw-controls label { min-width: 0; flex-basis: 100%; }
   .hw-controls button { width: 100%; justify-content: center; }
+  .hw-book-form { grid-template-columns: 1fr; }
+  .hw-book-form button { width: 100%; justify-content: center; }
   .adm-topbar { padding: 0 16px; gap: 10px; }
   .hw-student { padding: 16px; }
   .hw-readonly { font-size: 12px; }

@@ -3,7 +3,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createService } = require('../cloudfunctions/webHomework/service');
 const { createRepository } = require('../cloudfunctions/webHomework/repository');
-const { project, risk, validDate, calcPriorityScore } = require('../cloudfunctions/webHomework/projection');
+const { project, risk, validDate, shanghaiDate, calcPriorityScore } = require('../cloudfunctions/webHomework/projection');
+const { buildProjection, distributeIntegers } = require('../cloudfunctions/webHomework/plan-engine');
 const { AppError } = require('../cloudfunctions/webHomework/errors');
 const { fixture, mockDatabase } = require('./helpers/homework-fixture');
 function setup(data = fixture(), who = { uid: 'test-uid', isAnonymous: false }, pageSize = 17) {
@@ -227,5 +228,201 @@ test('each allowed action rechecks teacher state and role', async () => {
       assert.notEqual((await s.handle(event)).code, 'OK');
       assert.ok(!s.mock.reads.some(r => r.collection === 'hw_students' || r.collection === 'hw_daily_plans'));
     }
+  }
+});
+
+test('extracted plan engine keeps homework-manager distribution, warnings and priority inputs', () => {
+  assert.deepEqual(distributeIntegers(10, 3), [4, 3, 3]);
+  const projection = buildProjection({ _id: 'student-a', speedCoefficient: 0.5 },
+    [{ totalAmount: 100, completedAmount: 0, workloadPerUnit: 1 }],
+    { termEndDate: '2026-09-15', workDays: [1, 2, 3, 4, 5], dailyCapacity: 40,
+      minCompletionRate: 0.8, severeCompletionRate: 0.6 }, '2026-09-15');
+  assert.equal(projection.projectedRate, 0.5);
+  assert.equal(projection.color, 'red');
+  assert.equal(projection.alerts[0].message, '预计仅完成 50%，强烈建议干预');
+});
+
+test('createBook uses mini-program fields and defaults without changing plans', async () => {
+  const d = fixture(), s = setup(d), plansBefore = structuredClone(d.hw_daily_plans);
+  const result = await s.handle({ action: 'createBook', studentId: 'student-a', name: '  新练习册  ', totalAmount: 20 });
+  assert.equal(result.code, 'OK'); assert.equal(result.data.planGenerated, false);
+  const book = d.hw_homework_books.find(row => row._id === result.data.id);
+  assert.deepEqual({ studentId: book.studentId, classId: book.classId, name: book.name, subject: book.subject,
+    totalAmount: book.totalAmount, workloadPerUnit: book.workloadPerUnit, unit: book.unit,
+    completedAmount: book.completedAmount, isActive: book.isActive },
+  { studentId: 'student-a', classId: 'class-a', name: '新练习册', subject: 'other', totalAmount: 20,
+    workloadPerUnit: 5, unit: '页', completedAmount: 0, isActive: true });
+  assert.deepEqual(d.hw_daily_plans, plansBefore);
+  const decimal = await s.handle({ action: 'createBook', studentId: 'student-a', name: '负载测试', totalAmount: 2, workloadPerUnit: 1.5 });
+  assert.equal(decimal.code, 'OK'); assert.equal(decimal.data.book.workloadPerUnit, 1.5);
+});
+
+test('createBook validates fields and student authorization before writing', async () => {
+  for (const event of [
+    { action: 'createBook', studentId: 'student-a', name: '', totalAmount: 10 },
+    { action: 'createBook', studentId: 'student-a', name: '作业', totalAmount: 0 },
+    { action: 'createBook', studentId: 'student-a', name: '作业', totalAmount: 1.5 },
+    { action: 'createBook', studentId: 'missing', name: '作业', totalAmount: 10 }
+  ]) {
+    const s = setup(); assert.notEqual((await s.handle(event)).code, 'OK'); assert.equal(s.mock.writes, 0);
+  }
+  const d = fixture(); d.hw_students.push({ _id: 'student-c', classId: 'class-c', isActive: true });
+  const s = setup(d); assert.equal((await s.handle({ action: 'createBook', studentId: 'student-c', name: '作业', totalAmount: 10 })).code, 'FORBIDDEN');
+  assert.equal(s.mock.writes, 0);
+});
+
+test('generateTodayPlan creates only today with mini-program integer allocation and never rebuilds future plans', async () => {
+  const d = fixture(); d.hw_daily_plans.push({ _id: 'future-b', studentId: 'student-b', classId: 'class-a',
+    homeworkBookId: 'book-d', date: '2026-09-16', plannedAmount: 77, plannedWorkload: 154, isCompleted: false });
+  const s = setup(d), result = await s.handle({ action: 'generateTodayPlan', studentId: 'student-b' });
+  assert.equal(result.code, 'OK'); assert.equal(result.data.date, '2026-09-15'); assert.equal(result.data.plansGenerated, 1);
+  const todayPlan = d.hw_daily_plans.find(row => row.studentId === 'student-b' && row.date === '2026-09-15');
+  assert.equal(todayPlan.plannedAmount, distributeIntegers(99, 12)[0]);
+  assert.equal(d.hw_daily_plans.find(row => row._id === 'future-b').plannedAmount, 77);
+  const writes = s.mock.writes;
+  assert.equal((await s.handle({ action: 'generateTodayPlan', studentId: 'student-b' })).code, 'PLAN_EXISTS');
+  assert.equal(s.mock.writes, writes);
+  assert.equal(d.hw_daily_plans.filter(row => row.studentId === 'student-b' && row.date === '2026-09-15').length, 1);
+});
+
+test('saveDailyRecord preserves zero, updates same record, syncs plan and book without duplicates', async () => {
+  const d = fixture(), s = setup(d);
+  let result = await s.handle({ action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 0 });
+  assert.equal(result.code, 'OK'); assert.equal(result.data.actualAmount, 0); assert.equal(result.data.status, 'partial'); assert.equal(result.data.updated, true);
+  assert.equal(d.hw_daily_records.filter(row => row.studentId === 'student-a' && row.homeworkBookId === 'book-a' && row.date === '2026-09-15').length, 1);
+  assert.equal(d.hw_daily_records.find(row => row._id === 'record-a').actualAmount, 0);
+  assert.equal(d.hw_daily_plans.find(row => row._id === 'plan-a').isCompleted, false);
+  assert.equal(d.hw_homework_books.find(row => row._id === 'book-a').completedAmount, 0);
+  result = await s.handle({ action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 4 });
+  assert.equal(result.data.status, 'completed'); assert.equal(d.hw_daily_plans.find(row => row._id === 'plan-a').isCompleted, true);
+  assert.equal(d.hw_homework_books.find(row => row._id === 'book-a').completedAmount, 4);
+  assert.equal(d.hw_daily_records.filter(row => row.homeworkBookId === 'book-a').length, 1);
+});
+
+test('saveDailyRecord inserts one deterministic record then updates it on repeat', async () => {
+  const d = fixture(); d.hw_daily_records = d.hw_daily_records.filter(row => row.homeworkBookId !== 'book-c');
+  const s = setup(d), event = { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-c', date: '2026-09-15', actualAmount: 0 };
+  let result = await s.handle(event); assert.equal(result.code, 'OK'); assert.equal(result.data.updated, false);
+  let records = d.hw_daily_records.filter(row => row.studentId === 'student-a' && row.homeworkBookId === 'book-c' && row.date === '2026-09-15');
+  assert.equal(records.length, 1); assert.equal(records[0].actualAmount, 0); const documentId = records[0]._id;
+  result = await s.handle({ ...event, actualAmount: 2 }); assert.equal(result.code, 'OK'); assert.equal(result.data.updated, true);
+  records = d.hw_daily_records.filter(row => row.studentId === 'student-a' && row.homeworkBookId === 'book-c' && row.date === '2026-09-15');
+  assert.equal(records.length, 1); assert.equal(records[0]._id, documentId); assert.equal(records[0].actualAmount, 2);
+});
+
+test('repeated saves update completedAmount by new minus old without accumulating twice', async () => {
+  for (const [oldActual, newActual] of [[5, 3], [5, 0], [0, 5]]) {
+    const d = fixture();
+    d.hw_daily_records.find(row => row._id === 'record-a').actualAmount = oldActual;
+    d.hw_homework_books.find(row => row._id === 'book-a').completedAmount = oldActual;
+    const s = setup(d);
+    const result = await s.handle({ action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: newActual });
+    assert.equal(result.code, 'OK'); assert.equal(result.data.completedAmount, newActual);
+    assert.equal(d.hw_homework_books.find(row => row._id === 'book-a').completedAmount, newActual);
+    assert.equal(d.hw_daily_records.find(row => row._id === 'record-a').actualAmount, newActual);
+    assert.equal(d.hw_daily_records.filter(row => row.homeworkBookId === 'book-a' && row.date === '2026-09-15').length, 1);
+  }
+});
+
+test('concurrent duplicate record saves serialize and never double-count', async () => {
+  const d = fixture(), s = setup(d);
+  const event = { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 5 };
+  const results = await Promise.all([s.handle(event), s.handle(event)]);
+  assert.deepEqual(results.map(result => result.code), ['OK', 'OK']);
+  assert.equal(d.hw_daily_records.filter(row => row.homeworkBookId === 'book-a' && row.date === '2026-09-15').length, 1);
+  assert.equal(d.hw_daily_records.find(row => row._id === 'record-a').actualAmount, 5);
+  assert.equal(d.hw_homework_books.find(row => row._id === 'book-a').completedAmount, 5);
+  assert.equal(d.hw_daily_plans.find(row => row._id === 'plan-a').isCompleted, true);
+});
+
+test('record, plan and book updates commit together or all roll back', async () => {
+  for (const failingCollection of ['hw_daily_records', 'hw_homework_books', 'hw_daily_plans']) {
+    const d = fixture(), before = structuredClone(d), s = setup(d);
+    s.mock.failWrite = ({ collection }) => collection === failingCollection;
+    const result = await s.handle({ action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 5 });
+    assert.equal(result.code, 'UNAVAILABLE'); assert.deepEqual(d, before); assert.equal(s.mock.writes, 0);
+  }
+  const d = fixture(), s = setup(d);
+  assert.equal((await s.handle({ action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 5 })).code, 'OK');
+  assert.deepEqual(s.mock.mutations.slice(-3).map(item => item.collection), ['hw_daily_records', 'hw_homework_books', 'hw_daily_plans']);
+});
+
+test('completedAmount stays within zero and totalAmount bounds', async () => {
+  const over = fixture(); over.hw_homework_books.find(row => row._id === 'book-a').totalAmount = 4;
+  let s = setup(over);
+  assert.equal((await s.handle({ action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 5 })).code, 'AMOUNT_OUT_OF_RANGE');
+  assert.equal(over.hw_homework_books.find(row => row._id === 'book-a').completedAmount, 2); assert.equal(s.mock.writes, 0);
+  const below = fixture(); below.hw_daily_records.find(row => row._id === 'record-a').actualAmount = 5;
+  below.hw_homework_books.find(row => row._id === 'book-a').completedAmount = 0; s = setup(below);
+  assert.equal((await s.handle({ action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 0 })).code, 'AMOUNT_OUT_OF_RANGE');
+  assert.equal(below.hw_homework_books.find(row => row._id === 'book-a').completedAmount, 0); assert.equal(s.mock.writes, 0);
+});
+
+test('book total below completed amount is rejected before plan or record writes', async () => {
+  for (const action of ['generate', 'save']) {
+    const d = fixture(); const book = d.hw_homework_books.find(row => row._id === 'book-d');
+    book.totalAmount = 3; book.completedAmount = 5; const s = setup(d);
+    const event = action === 'generate' ? { action: 'generateTodayPlan', studentId: 'student-b' } :
+      { action: 'saveDailyRecord', studentId: 'student-b', homeworkBookId: 'book-d', date: '2026-09-15', actualAmount: 1 };
+    if (action === 'save') d.hw_daily_plans.push({ _id: 'plan-d', studentId: 'student-b', classId: 'class-a', homeworkBookId: 'book-d', date: '2026-09-15', plannedAmount: 1, isCompleted: false });
+    assert.equal((await s.handle(event)).code, 'DATA_INVALID'); assert.equal(s.mock.writes, 0);
+  }
+});
+
+test('concurrent today-plan generation succeeds exactly once', async () => {
+  const d = fixture(), s = setup(d), event = { action: 'generateTodayPlan', studentId: 'student-b' };
+  const results = await Promise.all([s.handle(event), s.handle(event)]);
+  assert.deepEqual(results.map(result => result.code).sort(), ['OK', 'PLAN_EXISTS']);
+  assert.equal(d.hw_daily_plans.filter(row => row.studentId === 'student-b' && row.date === '2026-09-15').length, 1);
+});
+
+test('today-plan generation with no remaining task performs no successful write', async () => {
+  const d = fixture(); d.hw_homework_books.find(row => row._id === 'book-d').completedAmount = 100;
+  const s = setup(d), result = await s.handle({ action: 'generateTodayPlan', studentId: 'student-b' });
+  assert.equal(result.code, 'NO_TASKS'); assert.equal(s.mock.writes, 0);
+  assert.equal(d.hw_daily_plans.some(row => row.studentId === 'student-b' && row.date === '2026-09-15'), false);
+});
+
+test('today uses Asia/Shanghai at the UTC day boundary', async () => {
+  assert.equal(shanghaiDate(new Date('2026-09-18T15:59:59.999Z')), '2026-09-18');
+  assert.equal(shanghaiDate(new Date('2026-09-18T16:00:00.000Z')), '2026-09-19');
+  const d = fixture(); d.hw_settings[0].termEndDate = '2026-09-30';
+  const mock = mockDatabase(d);
+  const handle = createService({ repo: createRepository(mock.db), identity: async () => ({ uid: 'test-uid', isAnonymous: false }),
+    environmentId: 'test-env', now: () => new Date('2026-09-18T16:00:00.000Z') });
+  const result = await handle({ action: 'generateTodayPlan', studentId: 'student-b' });
+  assert.equal(result.code, 'OK'); assert.equal(result.data.date, '2026-09-19');
+  assert.ok(d.hw_daily_plans.every(row => row.studentId !== 'student-b' || row.date === '2026-09-19'));
+  assert.equal((await handle({ action: 'saveDailyRecord', studentId: 'student-b', homeworkBookId: 'book-d', date: '2026-09-20', actualAmount: 1 })).code, 'FUTURE_DATE');
+});
+
+test('saveDailyRecord rejects future, missing-plan, cross-student and unauthorized writes', async () => {
+  const cases = [
+    { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-16', actualAmount: 1, code: 'FUTURE_DATE' },
+    { action: 'saveDailyRecord', studentId: 'student-b', homeworkBookId: 'book-d', date: '2026-09-15', actualAmount: 1, code: 'PLAN_REQUIRED' },
+    { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-d', date: '2026-09-15', actualAmount: 1, code: 'FORBIDDEN' }
+  ];
+  for (const { code, ...event } of cases) {
+    const s = setup(); assert.equal((await s.handle(event)).code, code); assert.equal(s.mock.writes, 0);
+  }
+  const d = fixture(); d.hw_students.push({ _id: 'student-c', classId: 'class-c', isActive: true });
+  d.hw_homework_books.push({ _id: 'book-c', studentId: 'student-c', classId: 'class-c', isActive: true });
+  const s = setup(d); assert.equal((await s.handle({ action: 'saveDailyRecord', studentId: 'student-c', homeworkBookId: 'book-c', date: '2026-09-15', actualAmount: 1 })).code, 'FORBIDDEN');
+  assert.equal(s.mock.writes, 0);
+});
+
+test('write actions recheck teacher status and reject browser-supplied authority fields', async () => {
+  for (const event of [
+    { action: 'createBook', studentId: 'student-a', name: '作业', totalAmount: 10, role: 'boss' },
+    { action: 'generateTodayPlan', studentId: 'student-b', teacherId: 'teacher-a' },
+    { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 1, collection: 'hw_daily_records' }
+  ]) assert.equal((await setup().handle(event)).code, 'BAD_REQUEST');
+  for (const action of [
+    { action: 'createBook', studentId: 'student-a', name: '作业', totalAmount: 10 },
+    { action: 'generateTodayPlan', studentId: 'student-b' },
+    { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 1 }
+  ]) {
+    const d = fixture(); d.hw_teachers[0].isActive = false; const s = setup(d);
+    assert.equal((await s.handle(action)).code, 'TEACHER_DISABLED'); assert.equal(s.mock.writes, 0);
   }
 });

@@ -45,7 +45,15 @@
           FORBIDDEN: '无权查看该班级或作业数据',
           NOT_CONFIGURED: '作业后端尚未正确配置，请联系管理员',
           BAD_REQUEST: '班级或日期无效', DATA_CHANGED: '数据发生变化，请重试',
-          DATA_LIMIT: '数据量超出单次读取范围，请联系管理员'
+          DATA_LIMIT: '数据量超出单次读取范围，请联系管理员',
+          NOT_FOUND: '学生或作业本不存在或已停用',
+          PLAN_EXISTS: '当天已有计划，不能重复生成',
+          PLAN_REQUIRED: '当天没有该作业计划，不能录入',
+          NO_WORKDAYS: '已无剩余工作日，无法生成计划',
+          NO_TASKS: '没有可生成的剩余作业',
+          FUTURE_DATE: '不能录入未来日期',
+          DATA_INVALID: '作业本总量或已完成量异常，请先核对数据',
+          AMOUNT_OUT_OF_RANGE: '保存后总完成量会超出作业本总量范围'
         };
         throw new HomeworkError(result.code, messages[result.code] || '作业服务暂不可用，请重试');
       }
@@ -66,6 +74,9 @@
       session: () => invoke('session'),
       classes: () => invoke('classes'),
       workspace: (classId, date) => invoke('workspace', { classId, date }),
+      createBook: book => invoke('createBook', book),
+      generateTodayPlan: studentId => invoke('generateTodayPlan', { studentId }),
+      saveDailyRecord: record => invoke('saveDailyRecord', record),
       async logout() {
         init();
         try { const result = await auth.signOut(); if (modern && result && result.error) throw result.error; }

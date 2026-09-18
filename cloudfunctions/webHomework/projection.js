@@ -1,15 +1,16 @@
 'use strict';
-// Pure calculations adapted from homework-manager plans/common/planEngine.js
-// and plans/index.js calcPriorityScore. No DB, cloud function or plan generation imports.
+const engine = require('./plan-engine');
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
 function validDate(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     Number.isFinite(Date.parse(value + 'T00:00:00Z')) &&
     new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
 }
-function chinaDate(now = new Date()) {
-  return new Date(now.getTime() + 8 * 3600000).toISOString().slice(0, 10);
+const SHANGHAI_OFFSET_MS = 8 * 3600000;
+function shanghaiDate(now = new Date()) {
+  return new Date(now.getTime() + SHANGHAI_OFFSET_MS).toISOString().slice(0, 10);
 }
+const chinaDate = shanghaiDate;
 function risk(rate, minRate = 0.8, severeRate = 0.6) {
   return !numeric(rate) ? 'unknown' : rate >= minRate ? 'green' : rate >= severeRate ? 'yellow' : 'red';
 }
@@ -25,12 +26,7 @@ function countWorkdays(from, to, workDays, holidays) {
 }
 function calcPriorityScore(proj, totalWorkdays) {
   if (!proj || !numeric(proj.rate) || !numeric(totalWorkdays) || totalWorkdays <= 0) return null;
-  const riskScore = Math.max(0, 1 - proj.rate);
-  const streakScore = Math.min(riskScore * 0.6, 1);
-  const urgencyScore = Math.max(0, 1 - proj.remainingWorkdays / totalWorkdays);
-  const capGap = proj.studentCapacity > 0
-    ? Math.min(Math.max(0, (proj.todayTarget - proj.studentCapacity) / proj.studentCapacity), 1) : 0;
-  return Math.round((0.5 * riskScore + 0.3 * streakScore + 0.1 * urgencyScore + 0.1 * capGap) * 100) / 100;
+  return engine.calcPriorityScore({ ...proj, projectedRate: proj.rate, remainingDays: proj.remainingWorkdays }, totalWorkdays);
 }
 function compareStudents(a, b) {
   const order = { red: 0, yellow: 1, green: 2, unknown: 3 };
@@ -56,34 +52,21 @@ function project(student, books, settings, date, today) {
       !numeric(capacity) || capacity <= 0) return unknown('预警阈值或日容量配置无效');
   const days = countWorkdays(date, settings.termEndDate, workDays, holidays);
   if (!days) return unknown('已无剩余工作日');
-  let total = 0, done = 0, remaining = 0;
+  let total = 0;
   for (const b of books) {
     if (![b.totalAmount, b.completedAmount, b.workloadPerUnit].every(numeric) ||
         b.totalAmount < 0 || b.completedAmount < 0 || b.workloadPerUnit <= 0) return unknown('作业总量、完成量或单位负载缺失');
     total += b.totalAmount * b.workloadPerUnit;
-    done += b.completedAmount * b.workloadPerUnit;
-    remaining += Math.max(0, (b.totalAmount - b.completedAmount) * b.workloadPerUnit);
   }
   if (total <= 0) return unknown('缺少有效作业总量');
-  const todayTarget = remaining / days;
-  const rate = Math.max(0, Math.min(1, (done + todayTarget * student.speedCoefficient * days) / total));
-  if (![total, done, remaining, todayTarget, rate].every(numeric)) return unknown('数据超出可计算范围');
-  const studentCapacity = capacity * student.speedCoefficient;
-  if (!numeric(studentCapacity)) return unknown('日容量超出可计算范围');
-  const color = risk(rate, minRate, severeRate);
-  const messages = {
-    green: rate >= 1 ? '预计可按时完成全部作业' : `预计完成 ${Math.round(rate * 100)}%，进度正常`,
-    yellow: `预计仅完成 ${Math.round(rate * 100)}%，可能无法完成全部作业`,
-    red: `预计仅完成 ${Math.round(rate * 100)}%，需要重点关注`
-  };
-  const alerts = [{ level: color, type: 'completion', message: messages[color] }];
-  if (todayTarget > studentCapacity) alerts.push({ level: 'yellow', type: 'capacity',
-    message: `今日目标 ${Math.round(todayTarget)} 负载超出该生日容量 ${Math.round(studentCapacity)} 负载` });
-  const projection = { rate, color, reason: null, remainingWorkdays: days, todayTarget, studentCapacity, alerts };
+  const base = engine.buildProjection(student, books, settings, date);
+  const projection = { rate: base.projectedRate, projectedRate: base.projectedRate, color: base.color,
+    reason: null, remainingWorkdays: base.remainingDays, todayTarget: base.todayTarget,
+    studentCapacity: base.studentCapacity, alerts: base.alerts };
   const totalDays = settings.termStartDate <= settings.termEndDate
     ? countWorkdays(settings.termStartDate, settings.termEndDate, workDays, holidays) : null;
   projection.priorityScore = calcPriorityScore(projection, totalDays);
   projection.priorityReason = projection.priorityScore === null ? '缺少有效学期起止日期，无法计算优先级' : null;
   return projection;
 }
-module.exports = { project, risk, validDate, chinaDate, numeric, countWorkdays, calcPriorityScore, compareStudents };
+module.exports = { project, risk, validDate, shanghaiDate, chinaDate, numeric, countWorkdays, calcPriorityScore, compareStudents };
