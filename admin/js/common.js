@@ -33,7 +33,8 @@
       { href: 'dashboard.html', icon: 'fa-th-large', label: '仪表盘' },
       { href: 'students.html', icon: 'fa-users', label: '学生管理' },
       { href: 'report-editor.html', icon: 'fa-edit', label: '每日反馈' },
-      { href: 'mistakes.html', icon: 'fa-exclamation-triangle', label: '错题管理' }
+      { href: 'mistakes.html', icon: 'fa-exclamation-triangle', label: '错题管理' },
+      { href: 'homework.html', icon: 'fa-book', label: '作业工作台' }
     ];
     nav.innerHTML = items.map((item) =>
       `<a href="${item.href}" class="adm-nav-item${current === item.href ? ' active' : ''}">
@@ -46,6 +47,7 @@
 
     document.getElementById('btnLogout').addEventListener('click', (e) => {
       e.preventDefault();
+      if (typeof window.homeworkLogout === 'function') { window.homeworkLogout(); return; }
       if (window.adminAuth) window.adminAuth.logout();
     });
   };

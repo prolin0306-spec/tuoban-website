@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>作业工作台 — 老师后台</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/homework.css">
+</head>
+<body class="adm-layout">
+  <aside class="adm-sidebar" id="sidebar">
+    <div class="adm-sidebar-brand">老师后台</div>
+    <nav class="adm-sidebar-nav" id="sidebarNav" aria-label="老师后台导航"></nav>
+  </aside>
+  <main class="adm-main">
+    <header class="adm-topbar">
+      <button class="adm-sidebar-toggle" id="sidebarToggle" aria-label="切换导航" aria-expanded="false">☰</button>
+      <strong>作业工作台</strong><span class="adm-topbar-info" id="topbarInfo"></span>
+    </header>
+    <div class="adm-content hw-content">
+      <div class="hw-heading"><div><h1>作业工作台</h1><p>查看今日计划、实际完成、预警原因与优先级。</p></div><span class="hw-readonly">只读查看</span></div>
+      <section class="adm-card hw-login" id="loginPanel" hidden>
+        <h2>验证作业访问权限</h2>
+        <p>请输入已开通作业权限的账号。原后台登录不会自动获得作业权限。</p>
+        <form id="homeworkLogin">
+          <label class="adm-form-label" for="homeworkUsername">作业访问账号</label>
+          <input class="adm-form-input" id="homeworkUsername" autocomplete="username" required maxlength="128">
+          <label class="adm-form-label" for="homeworkPassword">密码</label>
+          <input class="adm-form-input" id="homeworkPassword" type="password" autocomplete="current-password" required>
+          <button class="adm-btn adm-btn-primary" id="loginButton" type="submit">验证并进入</button>
+        </form>
+      </section>
+      <div id="homeworkStatus" role="status" aria-live="polite"></div>
+      <button id="retryButton" class="adm-btn adm-btn-secondary" hidden>重新加载</button>
+      <section id="workspacePanel" hidden>
+        <div class="adm-card hw-controls">
+          <label for="classSelect">班级<select id="classSelect" class="adm-form-select"></select></label>
+          <label for="dateSelect">查看日期<input type="date" id="dateSelect" class="adm-form-input"></label>
+          <button id="refreshButton" class="adm-btn adm-btn-secondary">刷新</button>
+        </div>
+        <div id="homeworkSummary" class="hw-summary" aria-live="polite"></div>
+        <div id="studentCards" class="hw-cards"></div>
+      </section>
+    </div>
+  </main>
+  <script src="../js/cloudbase-v3.10.0.full.min.js"></script>
+  <script src="js/homework-config.js"></script>
+  <script src="js/homework-api.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/homework.js"></script>
+</body>
+</html>
