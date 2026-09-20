@@ -32,6 +32,10 @@ test('anonymous, missing and expired platform sessions are rejected', async () =
 test('function and actions are fixed; no teacher identity or collection forwarded', async () => {
   const s = sdk(), a = createHomeworkAPI(config, s);
   await a.session(); await a.classes(); await a.workspace('class-a', '2026-09-15');
+  await a.students({ classId: 'class-a', query: '甲' });
+  await a.createStudent({ name: '学生', grade: '二年级', classId: 'class-a' });
+  await a.updateStudent({ studentId: 'student-a', name: '新姓名' });
+  await a.setStudentActive('student-a', false);
   await a.createBook({ studentId: 'student-a', name: '练习册', totalAmount: 10 });
   await a.generateTodayPlan('student-a');
   await a.saveDailyRecord({ studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 0 });
@@ -39,11 +43,15 @@ test('function and actions are fixed; no teacher identity or collection forwarde
     { name: 'webHomework', data: { action: 'session' } },
     { name: 'webHomework', data: { action: 'classes' } },
     { name: 'webHomework', data: { action: 'workspace', classId: 'class-a', date: '2026-09-15' } },
+    { name: 'webHomework', data: { action: 'students', classId: 'class-a', query: '甲' } },
+    { name: 'webHomework', data: { action: 'createStudent', name: '学生', grade: '二年级', classId: 'class-a' } },
+    { name: 'webHomework', data: { action: 'updateStudent', studentId: 'student-a', name: '新姓名' } },
+    { name: 'webHomework', data: { action: 'setStudentActive', studentId: 'student-a', isActive: false } },
     { name: 'webHomework', data: { action: 'createBook', studentId: 'student-a', name: '练习册', totalAmount: 10 } },
     { name: 'webHomework', data: { action: 'generateTodayPlan', studentId: 'student-a' } },
     { name: 'webHomework', data: { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 0 } }
   ]);
-  assert.equal(a.invoke, undefined); assert.equal(a.submit, undefined); assert.equal(a.deleteBook, undefined);
+  assert.equal(a.invoke, undefined); assert.equal(a.submit, undefined); assert.equal(a.deleteBook, undefined); assert.equal(a.deleteStudent, undefined);
 });
 test('login uses platform auth and logout uses SDK signOut', async () => {
   const s = sdk(); let loginCalled = false;

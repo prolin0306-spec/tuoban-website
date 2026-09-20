@@ -120,7 +120,7 @@ test('paginated plan/record/book rows are also complete', async () => {
 });
 test('all queries have zero writes and exclude credentials/contact fields', async () => {
   const s = setup(), before = JSON.stringify(s.data);
-  for (const e of [{ action: 'session' }, { action: 'classes' }, request]) assert.equal((await s.handle(e)).code, 'OK');
+  for (const e of [{ action: 'session' }, { action: 'classes' }, { action: 'students' }, request]) assert.equal((await s.handle(e)).code, 'OK');
   assert.equal(s.mock.writes, 0); assert.equal(JSON.stringify(s.data), before);
   for (const r of s.mock.reads) for (const k of ['password', 'phone', 'openid', 'parentPhone', 'note']) assert.ok(!r.fields[k]);
 });
@@ -425,4 +425,149 @@ test('write actions recheck teacher status and reject browser-supplied authority
     const d = fixture(); d.hw_teachers[0].isActive = false; const s = setup(d);
     assert.equal((await s.handle(action)).code, 'TEACHER_DISABLED'); assert.equal(s.mock.writes, 0);
   }
+});
+
+test('students lists only authorized classes with server-side class and name filters', async () => {
+  const d = fixture();
+  d.hw_students[1].isActive = false;
+  delete d.hw_students[1].speedLevel; delete d.hw_students[1].speedCoefficient;
+  d.hw_students.push({ _id: 'student-c', name: '不可见学生', grade: '三年级', classId: 'class-c', speedLevel: 'fast', speedCoefficient: 1.3, isActive: true });
+  d.hw_homework_books.push({ _id: 'book-extra', studentId: 'student-a', isActive: false });
+  d.hw_daily_plans.push({ _id: 'future-a', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-16' });
+  const s = setup(d);
+  let result = await s.handle({ action: 'students' });
+  assert.equal(result.code, 'OK'); assert.deepEqual(result.data.classes.map(cls => cls.id), ['class-a', 'class-b']);
+  assert.deepEqual(result.data.students.map(student => student.id), ['student-a', 'student-b']);
+  assert.equal(result.data.students[0].bookCount, 4); assert.equal(result.data.students[0].hasCurrentOrFuturePlan, true);
+  assert.equal(result.data.students[1].isActive, false); assert.equal(result.data.students[1].speedLevel, 'normal');
+  assert.equal(result.data.students[1].speedCoefficient, 1); assert.equal(d.hw_students[1].speedLevel, undefined);
+  result = await s.handle({ action: 'students', classId: 'class-a', query: '学生乙' });
+  assert.deepEqual(result.data.students.map(student => student.id), ['student-b']);
+  assert.equal((await s.handle({ action: 'students', classId: 'class-c', query: '' })).code, 'FORBIDDEN');
+  assert.equal((await s.handle({ action: 'students', query: { $ne: '' } })).code, 'BAD_REQUEST');
+  assert.equal(s.mock.writes, 0);
+});
+
+test('createStudent uses mini-program speed defaults and audit fields', async () => {
+  const d = fixture(), s = setup(d);
+  let result = await s.handle({ action: 'createStudent', name: '  新学生  ', grade: ' 二年级 ', classId: 'class-a' });
+  assert.equal(result.code, 'OK');
+  let student = d.hw_students.find(row => row._id === result.data.id);
+  assert.deepEqual({ name: student.name, grade: student.grade, classId: student.classId, speedLevel: student.speedLevel,
+    speedCoefficient: student.speedCoefficient, isActive: student.isActive, operatorTeacherId: student.operatorTeacherId },
+  { name: '新学生', grade: '二年级', classId: 'class-a', speedLevel: 'normal', speedCoefficient: 1,
+    isActive: true, operatorTeacherId: 'teacher-a' });
+  assert.ok(student.createdAt instanceof Date); assert.ok(student.updatedAt instanceof Date);
+  result = await s.handle({ action: 'createStudent', name: '偏快学生', grade: '三年级', classId: 'class-b', speedLevel: 'fast' });
+  student = d.hw_students.find(row => row._id === result.data.id); assert.equal(student.speedCoefficient, 1.3);
+});
+
+test('createStudent rejects invalid fields, unavailable classes and unauthorized classes', async () => {
+  for (const event of [
+    { action: 'createStudent', name: '', grade: '二年级', classId: 'class-a' },
+    { action: 'createStudent', name: '学生', grade: '', classId: 'class-a' },
+    { action: 'createStudent', name: '学生', grade: '二年级', classId: 'class-a', speedLevel: 'rapid' },
+    { action: 'createStudent', name: '学生', grade: '二年级', classId: 'class-c' },
+    { action: 'createStudent', name: '学生', grade: '二年级', classId: { $ne: '' } }
+  ]) {
+    const s = setup(); assert.notEqual((await s.handle(event)).code, 'OK'); assert.equal(s.mock.writes, 0);
+  }
+  const inactive = fixture(); inactive.hw_classes[0].isActive = false; const blocked = setup(inactive);
+  assert.equal((await blocked.handle({ action: 'createStudent', name: '学生', grade: '二年级', classId: 'class-a' })).code, 'FORBIDDEN');
+  assert.equal(blocked.mock.writes, 0);
+  const bossData = fixture(); bossData.hw_teachers[0].role = 'boss'; const boss = setup(bossData);
+  assert.equal((await boss.handle({ action: 'createStudent', name: '管理员学生', grade: '一年级', classId: 'class-c' })).code, 'OK');
+});
+
+test('updateStudent edits allowed fields and derives speed coefficient', async () => {
+  const d = fixture(), s = setup(d);
+  const result = await s.handle({ action: 'updateStudent', studentId: 'student-a', name: ' 更新姓名 ', grade: '四年级', speedLevel: 'fast' });
+  assert.equal(result.code, 'OK');
+  const student = d.hw_students.find(row => row._id === 'student-a');
+  assert.equal(student.name, '更新姓名'); assert.equal(student.grade, '四年级');
+  assert.equal(student.speedLevel, 'fast'); assert.equal(student.speedCoefficient, 1.3);
+  assert.equal(student.operatorTeacherId, 'teacher-a'); assert.ok(student.updatedAt instanceof Date);
+  assert.equal((await s.handle({ action: 'updateStudent', studentId: 'student-a' })).code, 'BAD_REQUEST');
+  assert.equal((await s.handle({ action: 'updateStudent', studentId: 'student-a', speedLevel: 'invalid' })).code, 'BAD_REQUEST');
+});
+
+test('missing legacy speed fields are read-only defaults until an explicit edit saves them', async () => {
+  const d = fixture(), student = d.hw_students.find(row => row._id === 'student-b');
+  delete student.speedLevel; delete student.speedCoefficient;
+  const s = setup(d), listed = await s.handle({ action: 'students', classId: 'class-a', query: '学生乙' });
+  assert.equal(listed.code, 'OK'); assert.equal(listed.data.students[0].speedLevel, 'normal');
+  assert.equal(listed.data.students[0].speedCoefficient, 1); assert.equal(student.speedLevel, undefined); assert.equal(s.mock.writes, 0);
+  const saved = await s.handle({ action: 'updateStudent', studentId: 'student-b', name: student.name,
+    grade: student.grade, classId: student.classId, speedLevel: listed.data.students[0].speedLevel });
+  assert.equal(saved.code, 'OK'); assert.equal(student.speedLevel, 'normal'); assert.equal(student.speedCoefficient, 1);
+});
+
+test('class changes require both permissions and are blocked by today or future plans', async () => {
+  const blocked = setup();
+  assert.equal((await blocked.handle({ action: 'updateStudent', studentId: 'student-a', classId: 'class-b' })).code, 'CLASS_CHANGE_BLOCKED');
+  assert.equal(blocked.data.hw_students.find(row => row._id === 'student-a').classId, 'class-a'); assert.equal(blocked.mock.writes, 0);
+  const futureData = fixture(); futureData.hw_daily_plans = [{ _id: 'future', studentId: 'student-b', date: '2026-09-16' }];
+  const future = setup(futureData);
+  assert.equal((await future.handle({ action: 'updateStudent', studentId: 'student-b', classId: 'class-b' })).code, 'CLASS_CHANGE_BLOCKED');
+  assert.equal(future.mock.writes, 0);
+  const allowedData = fixture(); allowedData.hw_daily_plans = allowedData.hw_daily_plans.filter(plan => plan.studentId !== 'student-a');
+  const allowed = setup(allowedData);
+  assert.equal((await allowed.handle({ action: 'updateStudent', studentId: 'student-a', classId: 'class-b' })).code, 'OK');
+  assert.equal(allowedData.hw_students.find(row => row._id === 'student-a').classId, 'class-b');
+  const unauthorizedData = fixture(); unauthorizedData.hw_daily_plans = []; const unauthorized = setup(unauthorizedData);
+  assert.equal((await unauthorized.handle({ action: 'updateStudent', studentId: 'student-a', classId: 'class-c' })).code, 'FORBIDDEN');
+  unauthorizedData.hw_students.push({ _id: 'student-c', name: '越权', grade: '一年级', classId: 'class-c', isActive: true });
+  assert.equal((await unauthorized.handle({ action: 'updateStudent', studentId: 'student-c', name: '不能改' })).code, 'FORBIDDEN');
+});
+
+test('setStudentActive only toggles state, preserves history and gates homework writes', async () => {
+  const d = fixture(), history = {
+    books: structuredClone(d.hw_homework_books), plans: structuredClone(d.hw_daily_plans), records: structuredClone(d.hw_daily_records)
+  }, s = setup(d);
+  let result = await s.handle({ action: 'setStudentActive', studentId: 'student-a', isActive: false });
+  assert.equal(result.code, 'OK'); assert.equal(result.data.historyPreserved, true);
+  assert.equal(d.hw_students.find(row => row._id === 'student-a').isActive, false);
+  assert.deepEqual(d.hw_homework_books, history.books); assert.deepEqual(d.hw_daily_plans, history.plans); assert.deepEqual(d.hw_daily_records, history.records);
+  for (const event of [
+    { action: 'createBook', studentId: 'student-a', name: '禁止新增', totalAmount: 10 },
+    { action: 'generateTodayPlan', studentId: 'student-a' },
+    { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 1 }
+  ]) assert.equal((await s.handle(event)).code, 'NOT_FOUND');
+  result = await s.handle({ action: 'setStudentActive', studentId: 'student-a', isActive: true });
+  assert.equal(result.code, 'OK'); assert.equal(d.hw_students.find(row => row._id === 'student-a').isActive, true);
+  assert.equal((await s.handle({ action: 'createBook', studentId: 'student-a', name: '重新启用后可新增', totalAmount: 1 })).code, 'OK');
+  assert.equal((await s.handle({ action: 'setStudentActive', studentId: 'student-a', isActive: 'false' })).code, 'BAD_REQUEST');
+  assert.equal((await s.handle({ action: 'deleteStudent', studentId: 'student-a' })).code, 'BAD_REQUEST');
+});
+
+test('student mutations roll back on storage failure', async () => {
+  for (const event of [
+    { action: 'createStudent', name: '学生', grade: '二年级', classId: 'class-a' },
+    { action: 'updateStudent', studentId: 'student-a', name: '新姓名' },
+    { action: 'setStudentActive', studentId: 'student-a', isActive: false }
+  ]) {
+    const d = fixture(), before = structuredClone(d), s = setup(d);
+    s.mock.failWrite = ({ collection }) => collection === 'hw_students';
+    assert.equal((await s.handle(event)).code, 'UNAVAILABLE'); assert.deepEqual(d, before); assert.equal(s.mock.writes, 0);
+  }
+});
+
+test('student actions recheck teacher state, role and browser-supplied fields', async () => {
+  const events = [
+    { action: 'students' },
+    { action: 'createStudent', name: '学生', grade: '二年级', classId: 'class-a' },
+    { action: 'updateStudent', studentId: 'student-a', name: '学生' },
+    { action: 'setStudentActive', studentId: 'student-a', isActive: false }
+  ];
+  for (const mutate of [teacher => { teacher.isActive = false; }, teacher => { teacher.role = 'invalid'; }]) {
+    for (const event of events) {
+      const d = fixture(), s = setup(d); mutate(d.hw_teachers[0]);
+      assert.notEqual((await s.handle(event)).code, 'OK'); assert.equal(s.mock.writes, 0);
+    }
+  }
+  for (const event of [
+    { action: 'createStudent', name: '学生', grade: '二年级', classId: 'class-a', isActive: true },
+    { action: 'updateStudent', studentId: 'student-a', operatorTeacherId: 'fake' },
+    { action: 'setStudentActive', studentId: 'student-a', isActive: false, collection: 'hw_students' }
+  ]) assert.equal((await setup().handle(event)).code, 'BAD_REQUEST');
 });

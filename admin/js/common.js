@@ -34,6 +34,7 @@
       { href: 'students.html', icon: 'fa-users', label: '学生管理' },
       { href: 'report-editor.html', icon: 'fa-edit', label: '每日反馈' },
       { href: 'mistakes.html', icon: 'fa-exclamation-triangle', label: '错题管理' },
+      { href: 'homework-students.html', icon: 'fa-user-graduate', label: '作业学生管理' },
       { href: 'homework.html', icon: 'fa-book', label: '作业工作台' }
     ];
     nav.innerHTML = items.map((item) =>

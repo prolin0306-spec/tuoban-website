@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>作业学生管理 — 老师后台</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/homework.css">
+  <link rel="stylesheet" href="css/homework-students.css">
+</head>
+<body class="adm-layout">
+  <aside class="adm-sidebar" id="sidebar">
+    <div class="adm-sidebar-brand">老师后台</div>
+    <nav class="adm-sidebar-nav" id="sidebarNav" aria-label="老师后台导航"></nav>
+  </aside>
+  <main class="adm-main">
+    <header class="adm-topbar">
+      <button class="adm-sidebar-toggle" id="sidebarToggle" aria-label="切换导航" aria-expanded="false">☰</button>
+      <strong>作业学生管理</strong><span class="adm-topbar-info" id="topbarInfo"></span>
+    </header>
+    <div class="adm-content sm-content">
+      <div class="sm-heading">
+        <div><h1>作业学生管理</h1><p>管理作业系统中的学生、班级归属和启用状态。</p></div>
+        <span class="sm-source">数据源：hw_students</span>
+      </div>
+
+      <section class="adm-card hw-login" id="loginPanel" hidden>
+        <h2>验证作业访问权限</h2>
+        <p>请输入已开通作业权限的账号。所有学生变更均由云函数校验老师与班级权限。</p>
+        <form id="homeworkLogin">
+          <label class="adm-form-label" for="homeworkUsername">作业访问账号</label>
+          <input class="adm-form-input" id="homeworkUsername" autocomplete="username" required maxlength="128">
+          <label class="adm-form-label" for="homeworkPassword">密码</label>
+          <input class="adm-form-input" id="homeworkPassword" type="password" autocomplete="current-password" required>
+          <button class="adm-btn adm-btn-primary" id="loginButton" type="submit">验证并进入</button>
+        </form>
+      </section>
+
+      <div id="studentStatus" role="status" aria-live="polite"></div>
+      <button id="retryButton" class="adm-btn adm-btn-secondary" hidden>重新加载</button>
+
+      <section id="studentPanel" hidden>
+        <div class="adm-card sm-controls">
+          <label for="classFilter">班级
+            <select id="classFilter" class="adm-form-select"><option value="">全部获授权班级</option></select>
+          </label>
+          <label for="nameSearch">姓名搜索
+            <input id="nameSearch" class="adm-form-input" maxlength="100" placeholder="输入姓名">
+          </label>
+          <button id="searchButton" class="adm-btn adm-btn-secondary" type="button">搜索</button>
+          <button id="refreshButton" class="adm-btn adm-btn-secondary" type="button">刷新</button>
+          <button id="addButton" class="adm-btn adm-btn-primary" type="button">新增学生</button>
+        </div>
+        <p id="studentSummary" class="sm-summary" aria-live="polite"></p>
+        <div id="studentList" class="sm-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="studentDialog" class="sm-dialog">
+    <form id="studentForm" class="sm-form">
+      <div class="sm-dialog-heading">
+        <h2 id="studentFormTitle">新增学生</h2>
+        <button id="closeDialogButton" class="sm-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <input id="studentId" type="hidden">
+      <label for="studentName">姓名
+        <input id="studentName" class="adm-form-input" maxlength="100" required>
+      </label>
+      <label for="studentGrade">年级
+        <input id="studentGrade" class="adm-form-input" maxlength="32" required placeholder="例如：二年级">
+      </label>
+      <label for="studentClass">所属班级
+        <select id="studentClass" class="adm-form-select" required></select>
+      </label>
+      <label for="studentSpeed">速度等级
+        <select id="studentSpeed" class="adm-form-select" required>
+          <option value="slow">偏慢（0.7）</option>
+          <option value="normal">正常（1.0）</option>
+          <option value="fast">偏快（1.3）</option>
+        </select>
+      </label>
+      <p id="classChangeWarning" class="sm-warning" hidden>该学生已有今天或未来计划。V1 禁止调整班级，避免破坏计划关系。</p>
+      <div class="sm-dialog-actions">
+        <button id="cancelButton" class="adm-btn adm-btn-secondary" type="button">取消</button>
+        <button id="saveStudentButton" class="adm-btn adm-btn-primary" type="submit">确认保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="../js/cloudbase-v3.10.0.full.min.js"></script>
+  <script src="js/homework-config.js"></script>
+  <script src="js/homework-api.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/homework-students.js"></script>
+</body>
+</html>

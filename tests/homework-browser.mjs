@@ -210,7 +210,7 @@ try {
   await openPage('/nav-smoke.html');await until('typeof window.initSidebar==="function"');
   await evaluate('window.adminAuth={logout(){window.oldLogoutCalled=true}};window.initSidebar("dashboard.html")');
   const links=await evaluate('Array.from(document.querySelectorAll("nav a")).map(a=>a.getAttribute("href"))');
-  for(const link of ['dashboard.html','students.html','report-editor.html','mistakes.html','homework.html'])assert.ok(links.includes(link));
+  for(const link of ['dashboard.html','students.html','report-editor.html','mistakes.html','homework-students.html','homework.html'])assert.ok(links.includes(link));
   await evaluate('document.getElementById("btnLogout").click()');assert.equal(await evaluate('window.oldLogoutCalled'),true);
  });
  await check('installed real SDK exposes required auth/call interfaces (no cloud calls)',async()=>{

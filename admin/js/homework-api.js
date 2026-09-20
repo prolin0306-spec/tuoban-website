@@ -44,7 +44,7 @@
           TEACHER_DISABLED: '作业老师未启用，请联系管理员',
           FORBIDDEN: '无权查看该班级或作业数据',
           NOT_CONFIGURED: '作业后端尚未正确配置，请联系管理员',
-          BAD_REQUEST: '班级或日期无效', DATA_CHANGED: '数据发生变化，请重试',
+          BAD_REQUEST: '提交字段无效，请检查后重试', DATA_CHANGED: '数据发生变化，请重试',
           DATA_LIMIT: '数据量超出单次读取范围，请联系管理员',
           NOT_FOUND: '学生或作业本不存在或已停用',
           PLAN_EXISTS: '当天已有计划，不能重复生成',
@@ -53,7 +53,8 @@
           NO_TASKS: '没有可生成的剩余作业',
           FUTURE_DATE: '不能录入未来日期',
           DATA_INVALID: '作业本总量或已完成量异常，请先核对数据',
-          AMOUNT_OUT_OF_RANGE: '保存后总完成量会超出作业本总量范围'
+          AMOUNT_OUT_OF_RANGE: '保存后总完成量会超出作业本总量范围',
+          CLASS_CHANGE_BLOCKED: '学生已有今天或未来计划，V1 禁止调整班级'
         };
         throw new HomeworkError(result.code, messages[result.code] || '作业服务暂不可用，请重试');
       }
@@ -74,6 +75,10 @@
       session: () => invoke('session'),
       classes: () => invoke('classes'),
       workspace: (classId, date) => invoke('workspace', { classId, date }),
+      students: filters => invoke('students', filters || {}),
+      createStudent: student => invoke('createStudent', student),
+      updateStudent: student => invoke('updateStudent', student),
+      setStudentActive: (studentId, isActive) => invoke('setStudentActive', { studentId, isActive }),
       createBook: book => invoke('createBook', book),
       generateTodayPlan: studentId => invoke('generateTodayPlan', { studentId }),
       saveDailyRecord: record => invoke('saveDailyRecord', record),

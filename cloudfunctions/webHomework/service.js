@@ -4,8 +4,13 @@ const { AppError, fail } = require('./errors');
 const { project, validDate, shanghaiDate, numeric, compareStudents } = require('./projection');
 const { countWorkdays, distributeIntegers, safeNumber, safeInt } = require('./plan-engine');
 const ROLES = new Set(['boss', 'teacher', 'substituteTeacher']);
+const SPEED_MAP = Object.freeze({ slow: 0.7, normal: 1, fast: 1.3 });
 const ACTION_KEYS = Object.freeze({
   session: ['action'], classes: ['action'], workspace: ['action', 'classId', 'date'],
+  students: ['action', 'classId', 'query'],
+  createStudent: ['action', 'name', 'grade', 'classId', 'speedLevel'],
+  updateStudent: ['action', 'studentId', 'name', 'grade', 'classId', 'speedLevel'],
+  setStudentActive: ['action', 'studentId', 'isActive'],
   createBook: ['action', 'studentId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
   generateTodayPlan: ['action', 'studentId'],
   saveDailyRecord: ['action', 'studentId', 'homeworkBookId', 'date', 'actualAmount']
@@ -15,6 +20,15 @@ function text(value, name, max, fallback) {
   if (value === undefined && fallback !== undefined) return fallback;
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) fail('BAD_REQUEST', `${name}无效`);
   return value.trim();
+}
+function optionalSearch(value) {
+  if (value === undefined || value === '') return '';
+  if (typeof value !== 'string' || value.trim().length > 100) fail('BAD_REQUEST', '搜索关键词无效');
+  return value.trim().toLocaleLowerCase('zh-CN');
+}
+function speed(value = 'normal') {
+  if (typeof value !== 'string' || !Object.hasOwn(SPEED_MAP, value)) fail('BAD_REQUEST', '速度等级无效');
+  return { speedLevel: value, speedCoefficient: SPEED_MAP[value] };
 }
 function positive(value, name, fallback) {
   const input = value === undefined ? fallback : value;
@@ -61,6 +75,97 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
     const student = students[0];
     if (!auth.classes.some(cls => cls._id === student.classId)) fail('FORBIDDEN', '无权操作该学生');
     return student;
+  }
+  async function resolveManagedStudent(studentId, auth, source = repo) {
+    if (!id(studentId)) fail('BAD_REQUEST', '学生无效');
+    const rows = await source.list('hw_students', { _id: studentId });
+    if (rows.length !== 1) fail('NOT_FOUND', '学生不存在');
+    if (!auth.classes.some(cls => cls._id === rows[0].classId)) fail('FORBIDDEN', '无权操作该学生');
+    return rows[0];
+  }
+  async function resolveWritableClass(classId, auth, source = repo) {
+    if (!id(classId) || !auth.classes.some(cls => cls._id === classId)) fail('FORBIDDEN', '无权操作该班级');
+    const rows = await source.list('hw_classes', { _id: classId });
+    if (rows.length !== 1 || rows[0].isActive === false) fail('FORBIDDEN', '班级不存在、不可用或无权操作');
+    return rows[0];
+  }
+  async function students(event, auth) {
+    const query = optionalSearch(event.query);
+    let classes = auth.classes;
+    if (event.classId !== undefined && event.classId !== '') {
+      if (!id(event.classId)) fail('BAD_REQUEST', '班级无效');
+      const selected = classes.find(cls => cls._id === event.classId);
+      if (!selected) fail('FORBIDDEN', '无权查看该班级');
+      classes = [selected];
+    }
+    const today = shanghaiDate(now()), rows = [];
+    for (const cls of classes) {
+      const classStudents = await repo.list('hw_students', { classId: cls._id });
+      for (const student of classStudents) {
+        if (query && !String(student.name || '').toLocaleLowerCase('zh-CN').includes(query)) continue;
+        const [books, plans] = await Promise.all([
+          repo.list('hw_homework_books', { studentId: student._id }),
+          repo.list('hw_daily_plans', { studentId: student._id })
+        ]);
+        const hasCompleteSpeed = Object.hasOwn(SPEED_MAP, student.speedLevel) && numeric(student.speedCoefficient);
+        rows.push({ id: student._id, name: student.name || '', grade: student.grade || '',
+          classId: student.classId, className: cls.name || '', speedLevel: hasCompleteSpeed ? student.speedLevel : 'normal',
+          speedCoefficient: hasCompleteSpeed ? student.speedCoefficient : SPEED_MAP.normal,
+          isActive: student.isActive === true, bookCount: books.length,
+          hasCurrentOrFuturePlan: plans.some(plan => validDate(plan.date) && plan.date >= today) });
+      }
+    }
+    rows.sort((a, b) => a.className.localeCompare(b.className, 'zh-CN') ||
+      a.name.localeCompare(b.name, 'zh-CN') || a.id.localeCompare(b.id));
+    return { classes: auth.classes.map(cls => ({ id: cls._id, name: cls.name || '' })), students: rows };
+  }
+  async function createStudent(event, auth) {
+    const name = text(event.name, '姓名', 100), grade = text(event.grade, '年级', 32);
+    const speedFields = speed(event.speedLevel), timestamp = now();
+    return repo.runTransaction(async transaction => {
+      const cls = await resolveWritableClass(event.classId, auth, transaction);
+      const student = { name, grade, classId: cls._id, ...speedFields, isActive: true,
+        createdAt: timestamp, updatedAt: timestamp, operatorTeacherId: auth.teacher._id };
+      const studentId = await transaction.add('hw_students', student);
+      return { id: studentId, student: { ...student, id: studentId, className: cls.name || '', bookCount: 0,
+        hasCurrentOrFuturePlan: false } };
+    });
+  }
+  async function updateStudent(event, auth) {
+    if (![event.name, event.grade, event.classId, event.speedLevel].some(value => value !== undefined)) {
+      fail('BAD_REQUEST', '没有可更新的学生字段');
+    }
+    const update = {};
+    if (event.name !== undefined) update.name = text(event.name, '姓名', 100);
+    if (event.grade !== undefined) update.grade = text(event.grade, '年级', 32);
+    if (event.speedLevel !== undefined) Object.assign(update, speed(event.speedLevel));
+    return repo.runTransaction(async transaction => {
+      const student = await resolveManagedStudent(event.studentId, auth, transaction);
+      if (event.classId !== undefined) {
+        if (!id(event.classId)) fail('BAD_REQUEST', '班级无效');
+        if (event.classId !== student.classId) {
+          await resolveWritableClass(event.classId, auth, transaction);
+          const plans = await transaction.list('hw_daily_plans', { studentId: student._id });
+          const today = shanghaiDate(now());
+          if (plans.some(plan => validDate(plan.date) && plan.date >= today)) {
+            fail('CLASS_CHANGE_BLOCKED', '学生已有今天或未来计划，V1 禁止调整班级');
+          }
+          update.classId = event.classId;
+        }
+      }
+      update.updatedAt = now(); update.operatorTeacherId = auth.teacher._id;
+      await transaction.update('hw_students', student._id, update);
+      return { id: student._id, ...student, ...update };
+    });
+  }
+  async function setStudentActive(event, auth) {
+    if (typeof event.isActive !== 'boolean') fail('BAD_REQUEST', '启用状态无效');
+    return repo.runTransaction(async transaction => {
+      const student = await resolveManagedStudent(event.studentId, auth, transaction);
+      const update = { isActive: event.isActive, updatedAt: now(), operatorTeacherId: auth.teacher._id };
+      await transaction.update('hw_students', student._id, update);
+      return { id: student._id, isActive: event.isActive, historyPreserved: true };
+    });
   }
   async function workspace(classId, date, auth) {
     const cls = auth.classes.find(item => item._id === classId);
@@ -219,6 +324,10 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
         if (!id(event.classId) || !validDate(event.date)) fail('BAD_REQUEST', '班级或日期无效');
         data = await workspace(event.classId, event.date, auth);
       }
+      if (event.action === 'students') data = await students(event, auth);
+      if (event.action === 'createStudent') data = await createStudent(event, auth);
+      if (event.action === 'updateStudent') data = await updateStudent(event, auth);
+      if (event.action === 'setStudentActive') data = await setStudentActive(event, auth);
       if (event.action === 'createBook') data = await createBook(event, auth);
       if (event.action === 'generateTodayPlan') data = await generateTodayPlan(event, auth);
       if (event.action === 'saveDailyRecord') data = await saveDailyRecord(event, auth);
@@ -229,4 +338,4 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
     }
   };
 }
-module.exports = { createService, ACTION_KEYS };
+module.exports = { createService, ACTION_KEYS, SPEED_MAP };
