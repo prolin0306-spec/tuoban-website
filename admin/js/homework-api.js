@@ -54,7 +54,10 @@
           FUTURE_DATE: '不能录入未来日期',
           DATA_INVALID: '作业本总量或已完成量异常，请先核对数据',
           AMOUNT_OUT_OF_RANGE: '保存后总完成量会超出作业本总量范围',
-          CLASS_CHANGE_BLOCKED: '学生已有今天或未来计划，V1 禁止调整班级'
+          CLASS_CHANGE_BLOCKED: '学生已有今天或未来计划，V1 禁止调整班级',
+          CLASS_EXISTS: '同名同年级班级已存在',
+          CLASS_NOT_EMPTY: '班级仍有关联学生或作业数据，不能停用',
+          NO_ACTIVE_STUDENTS: '当前班级没有可批量录入的启用学生'
         };
         throw new HomeworkError(result.code, messages[result.code] || '作业服务暂不可用，请重试');
       }
@@ -74,12 +77,17 @@
       },
       session: () => invoke('session'),
       classes: () => invoke('classes'),
+      managedClasses: () => invoke('managedClasses'),
+      createClass: value => invoke('createClass', value),
+      updateClass: value => invoke('updateClass', value),
+      setClassActive: (classId, isActive) => invoke('setClassActive', { classId, isActive }),
       workspace: (classId, date) => invoke('workspace', { classId, date }),
       students: filters => invoke('students', filters || {}),
       createStudent: student => invoke('createStudent', student),
       updateStudent: student => invoke('updateStudent', student),
       setStudentActive: (studentId, isActive) => invoke('setStudentActive', { studentId, isActive }),
       createBook: book => invoke('createBook', book),
+      createClassBooks: value => invoke('createClassBooks', value),
       generateTodayPlan: studentId => invoke('generateTodayPlan', { studentId }),
       saveDailyRecord: record => invoke('saveDailyRecord', record),
       async logout() {

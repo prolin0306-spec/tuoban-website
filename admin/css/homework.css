@@ -11,13 +11,14 @@
 .hw-login .adm-form-label { margin: 0; }
 .hw-controls { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; }
 .hw-controls label { display: grid; gap: 8px; min-width: 180px; flex: 1; }
-.hw-controls select, .hw-controls input { min-height: 44px; }
+.hw-controls select, .hw-controls input, .hw-controls .adm-btn { min-height: 44px; }
 .hw-book-panel { margin-top: 16px; }
 .hw-book-panel h2 { font-size: 18px; margin-bottom: 14px; }
 .hw-book-form { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 14px; align-items: end; }
 .hw-book-form label { display: grid; gap: 7px; font-size: 14px; }
 .hw-book-form input, .hw-book-form select, .hw-book-form button { min-height: 44px; }
 .hw-book-panel > .hw-muted { margin-top: 12px; }
+.hw-book-form [hidden] { display: none; }
 .hw-summary { color: var(--text-light); margin: 20px 0; line-height: 1.7; }
 .hw-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
 .hw-student { border-top: 4px solid var(--border); padding: 20px; min-width: 0; overflow-wrap: anywhere; }
@@ -51,7 +52,7 @@
   .hw-heading h1 { font-size: 22px; }
   .hw-controls { padding: 16px; }
   .hw-controls label { min-width: 0; flex-basis: 100%; }
-  .hw-controls button { width: 100%; justify-content: center; }
+  .hw-controls button, .hw-controls .adm-btn { width: 100%; justify-content: center; }
   .hw-book-form { grid-template-columns: 1fr; }
   .hw-book-form button { width: 100%; justify-content: center; }
   .adm-topbar { padding: 0 16px; gap: 10px; }

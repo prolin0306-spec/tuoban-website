@@ -1,0 +1,32 @@
+[hidden] { display: none !important; }
+.cm-content { max-width: 1200px; width: 100%; margin: 0 auto; }
+.cm-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+.cm-heading h1 { font-size: 26px; margin-bottom: 8px; }
+.cm-heading p, .cm-toolbar p { color: var(--text-light); line-height: 1.7; }
+.cm-source { padding: 6px 12px; border-radius: 20px; color: var(--primary); background: var(--primary-light); white-space: nowrap; }
+.cm-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.cm-toolbar p { margin-top: 5px; }
+.cm-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cm-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-top: 18px; }
+.cm-class { display: grid; gap: 13px; border-top: 4px solid #059669; }
+.cm-class[data-active="false"] { border-top-color: #94a3b8; opacity: .82; }
+.cm-class-heading { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+.cm-class-heading h2 { font-size: 19px; overflow-wrap: anywhere; }
+.cm-state { font-size: 12px; padding: 4px 9px; border-radius: 16px; color: #047857; background: #ecfdf5; white-space: nowrap; }
+.cm-class[data-active="false"] .cm-state { color: #475569; background: #f1f5f9; }
+.cm-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; color: var(--text-light); font-size: 14px; }
+.cm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cm-empty { grid-column: 1 / -1; text-align: center; color: var(--text-light); padding: 36px; }
+.cm-dialog { width: min(520px, calc(100% - 32px)); border: 0; border-radius: 14px; padding: 0; box-shadow: 0 24px 60px rgba(15, 23, 42, .25); }
+.cm-dialog::backdrop { background: rgba(15, 23, 42, .5); }
+.cm-form { display: grid; gap: 16px; padding: 24px; }
+.cm-form label { display: grid; gap: 7px; }
+.cm-dialog-heading, .cm-dialog-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cm-close { border: 0; background: transparent; font-size: 28px; cursor: pointer; }
+.cm-warning { color: #92400e; background: #fffbeb; border-radius: 8px; padding: 12px; line-height: 1.6; font-size: 14px; }
+@media (max-width: 640px) {
+  .cm-heading, .cm-toolbar { align-items: stretch; flex-direction: column; }
+  .cm-heading h1 { font-size: 22px; }
+  .cm-toolbar-actions, .cm-toolbar button, .cm-dialog-actions button { width: 100%; justify-content: center; }
+  .cm-dialog-actions { flex-direction: column-reverse; }
+}

@@ -571,3 +571,132 @@ test('student actions recheck teacher state, role and browser-supplied fields', 
     { action: 'setStudentActive', studentId: 'student-a', isActive: false, collection: 'hw_students' }
   ]) assert.equal((await setup().handle(event)).code, 'BAD_REQUEST');
 });
+
+test('managedClasses follows role scope and reports blockers without writes', async () => {
+  const d = fixture(), s = setup(d), before = structuredClone(d);
+  let result = await s.handle({ action: 'managedClasses' });
+  assert.equal(result.code, 'OK'); assert.equal(result.data.role, 'teacher'); assert.equal(result.data.canCreate, true);
+  assert.equal(result.data.canDeactivate, false); assert.deepEqual(result.data.classes.map(cls => cls.id).sort(), ['class-a', 'class-b']);
+  const first = result.data.classes.find(cls => cls.id === 'class-a');
+  assert.deepEqual({ students: first.studentCount, active: first.activeStudentCount, books: first.bookCount, plans: first.planCount },
+    { students: 2, active: 2, books: 4, plans: 3 });
+  assert.deepEqual(d, before); assert.equal(s.mock.writes, 0);
+  d.hw_teachers[0].role = 'boss'; d.hw_classes[2].isActive = false;
+  result = await s.handle({ action: 'managedClasses' });
+  assert.deepEqual(result.data.classes.map(cls => cls.id).sort(), ['class-a', 'class-b', 'class-c']);
+  assert.equal(result.data.canDeactivate, true); assert.equal(result.data.classes.find(cls => cls.id === 'class-c').isActive, false);
+});
+
+test('createClass reuses mini-program fields and links an ordinary teacher atomically', async () => {
+  const d = fixture(), s = setup(d);
+  const result = await s.handle({ action: 'createClass', name: ' 新建班 ', grade: ' 三年级 ' });
+  assert.equal(result.code, 'OK');
+  const cls = d.hw_classes.find(row => row._id === result.data.id);
+  assert.deepEqual({ name: cls.name, grade: cls.grade, teacherIds: cls.teacherIds, substituteTeacherId: cls.substituteTeacherId,
+    studentCount: cls.studentCount, isActive: cls.isActive, operatorTeacherId: cls.operatorTeacherId },
+  { name: '新建班', grade: '三年级', teacherIds: ['teacher-a'], substituteTeacherId: null,
+    studentCount: 0, isActive: true, operatorTeacherId: 'teacher-a' });
+  assert.ok(d.hw_teachers[0].classIds.includes(result.data.id)); assert.ok(cls.createdAt instanceof Date); assert.ok(cls.updatedAt instanceof Date);
+  assert.equal((await s.handle({ action: 'classes' })).data.some(row => row.id === result.data.id), true);
+  assert.equal((await s.handle({ action: 'createClass', name: '新建班', grade: '三年级' })).code, 'CLASS_EXISTS');
+});
+
+test('class creation, editing and activation enforce roles, access and empty-class safety', async () => {
+  const substituteData = fixture(); substituteData.hw_teachers[0].role = 'substituteTeacher';
+  assert.equal((await setup(substituteData).handle({ action: 'createClass', name: '班级', grade: '一年级' })).code, 'FORBIDDEN');
+  const d = fixture(), s = setup(d);
+  assert.equal((await s.handle({ action: 'updateClass', classId: 'class-a', name: '更新甲班', grade: '四年级' })).code, 'OK');
+  assert.equal(d.hw_classes[0].name, '更新甲班'); assert.equal(d.hw_classes[0].operatorTeacherId, 'teacher-a');
+  assert.equal((await s.handle({ action: 'updateClass', classId: 'class-c', name: '越权' })).code, 'FORBIDDEN');
+  assert.equal((await s.handle({ action: 'setClassActive', classId: 'class-b', isActive: false })).code, 'FORBIDDEN');
+  d.hw_teachers[0].role = 'boss';
+  assert.equal((await s.handle({ action: 'setClassActive', classId: 'class-a', isActive: false })).code, 'CLASS_NOT_EMPTY');
+  let result = await s.handle({ action: 'setClassActive', classId: 'class-b', isActive: false });
+  assert.equal(result.code, 'OK'); assert.equal(d.hw_classes[1].isActive, false); assert.equal(result.data.historyPreserved, true);
+  result = await s.handle({ action: 'setClassActive', classId: 'class-b', isActive: true });
+  assert.equal(result.code, 'OK'); assert.equal(d.hw_classes[1].isActive, true);
+  assert.equal((await s.handle({ action: 'deleteClass', classId: 'class-b' })).code, 'BAD_REQUEST');
+});
+
+test('class mutations roll back together on storage failure', async () => {
+  for (const event of [
+    { action: 'createClass', name: '回滚班', grade: '二年级' },
+    { action: 'updateClass', classId: 'class-a', name: '回滚名称' }
+  ]) {
+    const d = fixture(), before = structuredClone(d), s = setup(d);
+    s.mock.failWrite = ({ collection }) => collection === (event.action === 'createClass' ? 'hw_teachers' : 'hw_classes');
+    assert.equal((await s.handle(event)).code, 'UNAVAILABLE'); assert.deepEqual(d, before); assert.equal(s.mock.writes, 0);
+  }
+});
+
+test('createClassBooks fans one input out to active students without generating plans', async () => {
+  const d = fixture(), s = setup(d), plansBefore = structuredClone(d.hw_daily_plans), before = d.hw_homework_books.length;
+  const event = { action: 'createClassBooks', classId: 'class-a', requestId: 'batch-request-001', name: ' 全班练习 ',
+    subject: 'math', totalAmount: 30, workloadPerUnit: 2, unit: '题' };
+  const result = await s.handle(event);
+  assert.equal(result.code, 'OK'); assert.equal(result.data.createdCount, 2); assert.equal(result.data.planGenerated, false);
+  const books = d.hw_homework_books.slice(before);
+  assert.deepEqual(books.map(book => book.studentId).sort(), ['student-a', 'student-b']);
+  assert.ok(books.every(book => book.classId === 'class-a' && book.name === '全班练习' && book.totalAmount === 30 &&
+    book.completedAmount === 0 && book.isActive === true && book.batchId === 'batch-request-001'));
+  assert.equal(new Set(books.map(book => book._id)).size, 2); assert.deepEqual(d.hw_daily_plans, plansBefore);
+  const writes = s.mock.writes;
+  const repeated = await s.handle(event); assert.equal(repeated.code, 'OK'); assert.equal(repeated.data.repeated, true); assert.equal(s.mock.writes, writes);
+});
+
+test('class batch books exclude inactive students and reject empty, oversized and unauthorized classes', async () => {
+  const base = { action: 'createClassBooks', requestId: 'batch-request-002', name: '班级作业', totalAmount: 10 };
+  const d = fixture(); d.hw_students[1].isActive = false; const s = setup(d);
+  let result = await s.handle({ ...base, classId: 'class-a' });
+  assert.equal(result.code, 'OK'); assert.equal(result.data.createdCount, 1);
+  assert.equal(d.hw_homework_books.filter(book => book.batchId === base.requestId)[0].studentId, 'student-a');
+  assert.equal((await setup().handle({ ...base, requestId: 'batch-request-003', classId: 'class-b' })).code, 'NO_ACTIVE_STUDENTS');
+  assert.equal((await setup().handle({ ...base, requestId: 'batch-request-004', classId: 'class-c' })).code, 'FORBIDDEN');
+  assert.equal((await setup().handle({ ...base, requestId: 'bad!', classId: 'class-a' })).code, 'BAD_REQUEST');
+  const many = fixture(); many.hw_students = Array.from({ length: 101 }, (_, i) => ({ _id: `many-${i}`, classId: 'class-a', isActive: true }));
+  const manyService = setup(many); result = await manyService.handle({ ...base, requestId: 'batch-request-005', classId: 'class-a' });
+  assert.equal(result.code, 'DATA_LIMIT'); assert.equal(manyService.mock.writes, 0);
+});
+
+test('class batch books are atomic and reject browser-supplied write scope', async () => {
+  const d = fixture(), before = structuredClone(d), s = setup(d);
+  s.mock.failWrite = ({ collection, writeNumber }) => collection === 'hw_homework_books' && writeNumber === 2;
+  const event = { action: 'createClassBooks', classId: 'class-a', requestId: 'batch-request-006', name: '事务作业', totalAmount: 10 };
+  assert.equal((await s.handle(event)).code, 'UNAVAILABLE'); assert.deepEqual(d, before); assert.equal(s.mock.writes, 0);
+  assert.equal((await setup().handle({ ...event, collection: 'hw_homework_books' })).code, 'BAD_REQUEST');
+});
+
+test('concurrent class and batch submissions succeed only once', async () => {
+  const classData = fixture(), classService = setup(classData);
+  const classResults = await Promise.all([
+    classService.handle({ action: 'createClass', name: '并发班', grade: '二年级' }),
+    classService.handle({ action: 'createClass', name: '并发班', grade: '二年级' })
+  ]);
+  assert.deepEqual(classResults.map(result => result.code).sort(), ['CLASS_EXISTS', 'OK']);
+  assert.equal(classData.hw_classes.filter(cls => cls.name === '并发班').length, 1);
+  const booksData = fixture(), booksService = setup(booksData);
+  const event = { action: 'createClassBooks', classId: 'class-a', requestId: 'batch-concurrent-01', name: '并发作业', totalAmount: 10 };
+  const results = await Promise.all([booksService.handle(event), booksService.handle(event)]);
+  assert.deepEqual(results.map(result => result.code), ['OK', 'OK']); assert.equal(results.filter(result => result.data.repeated).length, 1);
+  assert.equal(booksData.hw_homework_books.filter(book => book.batchId === event.requestId).length, 2);
+});
+
+test('new actions recheck teacher state and reject client authority fields', async () => {
+  const events = [
+    { action: 'managedClasses' },
+    { action: 'createClass', name: '班级', grade: '二年级' },
+    { action: 'updateClass', classId: 'class-a', name: '班级' },
+    { action: 'setClassActive', classId: 'class-b', isActive: false },
+    { action: 'createClassBooks', classId: 'class-a', requestId: 'batch-authority-01', name: '作业', totalAmount: 10 }
+  ];
+  for (const event of events) {
+    const d = fixture(), s = setup(d); d.hw_teachers[0].isActive = false;
+    assert.notEqual((await s.handle(event)).code, 'OK'); assert.equal(s.mock.writes, 0);
+  }
+  for (const event of [
+    { action: 'createClass', name: '班级', grade: '二年级', teacherIds: ['teacher-a'] },
+    { action: 'updateClass', classId: 'class-a', name: '班级', substituteTeacherId: 'teacher-a' },
+    { action: 'setClassActive', classId: 'class-b', isActive: false, role: 'boss' },
+    { action: 'createClassBooks', classId: 'class-a', requestId: 'batch-authority-02', name: '作业', totalAmount: 10, studentIds: ['student-a'] }
+  ]) assert.equal((await setup().handle(event)).code, 'BAD_REQUEST');
+});

@@ -7,11 +7,16 @@ const ROLES = new Set(['boss', 'teacher', 'substituteTeacher']);
 const SPEED_MAP = Object.freeze({ slow: 0.7, normal: 1, fast: 1.3 });
 const ACTION_KEYS = Object.freeze({
   session: ['action'], classes: ['action'], workspace: ['action', 'classId', 'date'],
+  managedClasses: ['action'],
+  createClass: ['action', 'name', 'grade'],
+  updateClass: ['action', 'classId', 'name', 'grade'],
+  setClassActive: ['action', 'classId', 'isActive'],
   students: ['action', 'classId', 'query'],
   createStudent: ['action', 'name', 'grade', 'classId', 'speedLevel'],
   updateStudent: ['action', 'studentId', 'name', 'grade', 'classId', 'speedLevel'],
   setStudentActive: ['action', 'studentId', 'isActive'],
   createBook: ['action', 'studentId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
+  createClassBooks: ['action', 'classId', 'requestId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
   generateTodayPlan: ['action', 'studentId'],
   saveDailyRecord: ['action', 'studentId', 'homeworkBookId', 'date', 'actualAmount']
 });
@@ -66,7 +71,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
     const own = Array.isArray(teacher.classIds) ? teacher.classIds.filter(id) : [];
     const classes = all.filter(cls => cls.isActive !== false && (teacher.role === 'boss' ||
       own.includes(cls._id) || cls.substituteTeacherId === teacher._id));
-    return { teacher, classes };
+    return { teacher, classes, allClasses: all };
   }
   async function resolveStudent(studentId, auth, source = repo) {
     if (!id(studentId)) fail('BAD_REQUEST', '学生无效');
@@ -88,6 +93,87 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
     const rows = await source.list('hw_classes', { _id: classId });
     if (rows.length !== 1 || rows[0].isActive === false) fail('FORBIDDEN', '班级不存在、不可用或无权操作');
     return rows[0];
+  }
+  async function resolveManagedClass(classId, auth, source = repo) {
+    if (!id(classId)) fail('BAD_REQUEST', '班级无效');
+    const rows = await source.list('hw_classes', { _id: classId });
+    if (rows.length !== 1) fail('NOT_FOUND', '班级不存在');
+    if (auth.teacher.role !== 'boss' && !auth.classes.some(cls => cls._id === classId)) fail('FORBIDDEN', '无权操作该班级');
+    return rows[0];
+  }
+  async function managedClasses(auth) {
+    const source = auth.teacher.role === 'boss' ? auth.allClasses : auth.classes;
+    const rows = [];
+    for (const cls of source) {
+      const [students, books, plans] = await Promise.all([
+        repo.list('hw_students', { classId: cls._id }),
+        repo.list('hw_homework_books', { classId: cls._id }),
+        repo.list('hw_daily_plans', { classId: cls._id })
+      ]);
+      rows.push({ id: cls._id, name: cls.name || '', grade: cls.grade || '', isActive: cls.isActive !== false,
+        studentCount: students.length, activeStudentCount: students.filter(student => student.isActive === true).length,
+        bookCount: books.length, planCount: plans.length });
+    }
+    rows.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN') || a.id.localeCompare(b.id));
+    return { role: auth.teacher.role, canCreate: ['boss', 'teacher'].includes(auth.teacher.role),
+      canDeactivate: auth.teacher.role === 'boss', classes: rows };
+  }
+  async function createClass(event, auth) {
+    if (!['boss', 'teacher'].includes(auth.teacher.role)) fail('FORBIDDEN', '当前角色不能新增班级');
+    const name = text(event.name, '班级名称', 100), grade = text(event.grade, '年级', 32), timestamp = now();
+    return repo.runTransaction(async transaction => {
+      const existing = await transaction.list('hw_classes');
+      if (existing.some(cls => cls.isActive !== false && String(cls.name || '').trim() === name && String(cls.grade || '').trim() === grade)) {
+        fail('CLASS_EXISTS', '同名同年级班级已存在');
+      }
+      const teacherIds = auth.teacher.role === 'teacher' ? [auth.teacher._id] : [];
+      const data = { name, grade, teacherIds, substituteTeacherId: null, studentCount: 0, isActive: true,
+        createdAt: timestamp, updatedAt: timestamp, operatorTeacherId: auth.teacher._id };
+      const classId = await transaction.add('hw_classes', data);
+      if (auth.teacher.role === 'teacher') {
+        const current = await transaction.list('hw_teachers', { _id: auth.teacher._id });
+        if (current.length !== 1 || current[0].isActive !== true || current[0].role !== 'teacher') fail('FORBIDDEN', '老师状态或角色已变化');
+        const classIds = [...new Set([...(Array.isArray(current[0].classIds) ? current[0].classIds : []), classId])];
+        await transaction.update('hw_teachers', auth.teacher._id, { classIds, updatedAt: timestamp });
+      }
+      return { id: classId, class: { ...data, id: classId } };
+    });
+  }
+  async function updateClass(event, auth) {
+    if (event.name === undefined && event.grade === undefined) fail('BAD_REQUEST', '没有可更新的班级字段');
+    const update = {};
+    if (event.name !== undefined) update.name = text(event.name, '班级名称', 100);
+    if (event.grade !== undefined) update.grade = text(event.grade, '年级', 32);
+    return repo.runTransaction(async transaction => {
+      const cls = await resolveManagedClass(event.classId, auth, transaction);
+      const name = update.name === undefined ? String(cls.name || '').trim() : update.name;
+      const grade = update.grade === undefined ? String(cls.grade || '').trim() : update.grade;
+      const existing = await transaction.list('hw_classes');
+      if (existing.some(row => row._id !== cls._id && row.isActive !== false && String(row.name || '').trim() === name && String(row.grade || '').trim() === grade)) {
+        fail('CLASS_EXISTS', '同名同年级班级已存在');
+      }
+      update.updatedAt = now(); update.operatorTeacherId = auth.teacher._id;
+      await transaction.update('hw_classes', cls._id, update);
+      return { id: cls._id, ...cls, ...update };
+    });
+  }
+  async function setClassActive(event, auth) {
+    if (auth.teacher.role !== 'boss') fail('FORBIDDEN', '只有负责人可以停用或重新启用班级');
+    if (typeof event.isActive !== 'boolean') fail('BAD_REQUEST', '班级状态无效');
+    return repo.runTransaction(async transaction => {
+      const cls = await resolveManagedClass(event.classId, auth, transaction);
+      if (!event.isActive) {
+        const collections = ['hw_students', 'hw_homework_books', 'hw_daily_plans', 'hw_daily_records'];
+        for (const collection of collections) {
+          if ((await transaction.list(collection, { classId: cls._id })).length) {
+            fail('CLASS_NOT_EMPTY', '班级仍有关联学生或作业数据，不能停用');
+          }
+        }
+      }
+      const update = { isActive: event.isActive, updatedAt: now(), operatorTeacherId: auth.teacher._id };
+      await transaction.update('hw_classes', cls._id, update);
+      return { id: cls._id, isActive: event.isActive, historyPreserved: true };
+    });
   }
   async function students(event, auth) {
     const query = optionalSearch(event.query);
@@ -242,6 +328,44 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       return { id: bookId, book: { ...book, _id: bookId }, planGenerated: false };
     });
   }
+  async function createClassBooks(event, auth) {
+    if (typeof event.requestId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(event.requestId)) fail('BAD_REQUEST', '批量请求标识无效');
+    const name = text(event.name, '作业本名称', 100);
+    const subject = text(event.subject, '科目', 32, 'other');
+    const unit = text(event.unit, '单位', 16, '页');
+    const totalAmount = positive(event.totalAmount, '总量');
+    const workloadPerUnit = positiveNumber(event.workloadPerUnit, '单位负载', 5);
+    const createdAt = now();
+    return repo.runTransaction(async transaction => {
+      const cls = await resolveWritableClass(event.classId, auth, transaction);
+      const students = await transaction.list('hw_students', { classId: cls._id, isActive: true });
+      if (!students.length) fail('NO_ACTIVE_STUDENTS', '班级没有启用学生');
+      if (students.length > 100) fail('DATA_LIMIT', '单次最多为 100 名学生批量新增作业本');
+      const pending = []; let existingCount = 0;
+      for (const student of students) {
+        const bookId = stableId('webbatchbook', event.requestId, student._id);
+        const book = { studentId: student._id, classId: cls._id, subject, name, totalAmount,
+          workloadPerUnit, unit, completedAmount: 0, isActive: true, batchId: event.requestId,
+          createdAt, updatedAt: createdAt };
+        const existing = await transaction.list('hw_homework_books', { _id: bookId });
+        if (existing.length) {
+          const row = existing[0], same = ['studentId', 'classId', 'subject', 'name', 'totalAmount', 'workloadPerUnit', 'unit', 'batchId']
+            .every(key => row[key] === book[key]);
+          if (!same || row.isActive !== true) fail('DATA_CHANGED', '批量请求对应的数据已变化，请刷新核对');
+          existingCount++; continue;
+        }
+        pending.push({ id: bookId, data: book });
+      }
+      if (existingCount) {
+        if (existingCount !== students.length) fail('DATA_CHANGED', '批量请求只完成了部分数据，请联系管理员核对');
+        return { classId: cls._id, className: cls.name || '', bookName: name,
+          createdCount: existingCount, planGenerated: false, repeated: true };
+      }
+      for (const book of pending) await transaction.set('hw_homework_books', book.id, book.data);
+      return { classId: cls._id, className: cls.name || '', bookName: name,
+        createdCount: pending.length, planGenerated: false, repeated: false };
+    });
+  }
   async function generateTodayPlan(event, auth) {
     const date = shanghaiDate(now());
     return repo.runTransaction(async transaction => {
@@ -319,7 +443,11 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       const auth = await authorize();
       let data;
       if (event.action === 'session') data = { teacher: { id: auth.teacher._id, name: auth.teacher.name || '', role: auth.teacher.role } };
-      if (event.action === 'classes') data = auth.classes.map(cls => ({ id: cls._id, name: cls.name || '' }));
+      if (event.action === 'classes') data = auth.classes.map(cls => ({ id: cls._id, name: cls.name || '', grade: cls.grade || '' }));
+      if (event.action === 'managedClasses') data = await managedClasses(auth);
+      if (event.action === 'createClass') data = await createClass(event, auth);
+      if (event.action === 'updateClass') data = await updateClass(event, auth);
+      if (event.action === 'setClassActive') data = await setClassActive(event, auth);
       if (event.action === 'workspace') {
         if (!id(event.classId) || !validDate(event.date)) fail('BAD_REQUEST', '班级或日期无效');
         data = await workspace(event.classId, event.date, auth);
@@ -329,6 +457,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       if (event.action === 'updateStudent') data = await updateStudent(event, auth);
       if (event.action === 'setStudentActive') data = await setStudentActive(event, auth);
       if (event.action === 'createBook') data = await createBook(event, auth);
+      if (event.action === 'createClassBooks') data = await createClassBooks(event, auth);
       if (event.action === 'generateTodayPlan') data = await generateTodayPlan(event, auth);
       if (event.action === 'saveDailyRecord') data = await saveDailyRecord(event, auth);
       return { code: 'OK', data };

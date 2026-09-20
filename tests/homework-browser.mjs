@@ -20,7 +20,7 @@ data.hw_settings[0].termEndDate = new Date(Date.now() + 22 * 86400000).toISOStri
 const mock = mockDatabase(data);
 let caller = { uid: 'test-uid', isAnonymous: false }, unavailable = false, passes = 0;
 const handle = createService({ repo: createRepository(mock.db), identity: async () => caller, environmentId: 'test-env' });
-const sdkStub = `window.__test = { loggedIn: true };
+const sdkStub = `window.__test = { loggedIn: true, confirms: [] };window.confirm=message=>{window.__test.confirms.push(message);return true;};
 window.cloudbase = { init() { const auth = {
  getSession: async () => ({data:{session:window.__test.loggedIn?{sub:'test-uid'}:null}}),
  signInWithPassword: async () => { window.__test.loggedIn = true; return {data:{}}; },
@@ -100,6 +100,7 @@ try {
   await openPage();await until('document.querySelectorAll(".hw-student").length===2');
   assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
   assert.equal(await evaluate('document.getElementById("classSelect").options.length'),2);
+  assert.equal(await evaluate('document.querySelector(`.hw-controls a[href="homework-classes.html?new=1"]`)!==null'),true);
   await evaluate('document.querySelectorAll("details").forEach(e=>e.open=true)');
   const body=await evaluate('document.body.innerText');
   for(const label of ['实际：0','未记录','部分完成','尚未生成计划','预计完成率','实际完成率','优先级：','测试甲班'])assert.ok(body.includes(label));
@@ -139,7 +140,7 @@ try {
   assert.deepEqual({studentId:book.studentId,classId:book.classId,subject:book.subject,totalAmount:book.totalAmount,
    workloadPerUnit:book.workloadPerUnit,unit:book.unit,completedAmount:book.completedAmount,isActive:book.isActive},
   {studentId:'student-b',classId:'class-a',subject:'math',totalAmount:24,workloadPerUnit:5,unit:'页',completedAmount:0,isActive:true});
-  assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
+ assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
  });
  await check('generate today plan is explicit, one-time and does not run on refresh',async()=>{
   const writesBefore=mock.writes;
@@ -160,7 +161,18 @@ try {
   assert.equal(records.length,1);assert.equal(records[0].actualAmount,0);assert.equal(records[0].status,'partial');
   assert.equal(data.hw_daily_plans.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today).isCompleted,false);
   await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"]').open=true`);
-  assert.equal(await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"] [data-record-input="book-d"]').value`),'0');
+ assert.equal(await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"] [data-record-input="book-d"]').value`),'0');
+ });
+ await check('one class input creates separate books for every active student without plans',async()=>{
+  const plansBefore=JSON.stringify(data.hw_daily_plans),before=data.hw_homework_books.length;
+  await evaluate(`(()=>{document.getElementById('bookTarget').value='class';document.getElementById('bookTarget').dispatchEvent(new Event('change'));document.getElementById('bookName').value='全班统一作业';document.getElementById('bookSubject').value='chinese';document.getElementById('bookTotal').value='18';document.getElementById('bookWorkload').value='3';document.getElementById('bookUnit').value='页';document.getElementById('bookForm').requestSubmit()})()`);
+  await until('document.body.innerText.includes("已为 2 名启用学生分别新增作业本")');
+  const books=data.hw_homework_books.slice(before);assert.equal(books.length,2);
+  assert.deepEqual(books.map(row=>row.studentId).sort(),['student-a','student-b']);
+  assert.ok(books.every(row=>row.name==='全班统一作业'&&row.classId==='class-a'&&row.completedAmount===0&&row.batchId));
+  assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
+  assert.equal(await evaluate('document.getElementById("bookStudentLabel").hidden'),true);
+  assert.ok((await evaluate('window.__test.confirms')).at(-1).includes('全部启用学生'));
  });
  await check('mobile layout, navigation and expandable tasks',async()=>{
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
@@ -210,7 +222,7 @@ try {
   await openPage('/nav-smoke.html');await until('typeof window.initSidebar==="function"');
   await evaluate('window.adminAuth={logout(){window.oldLogoutCalled=true}};window.initSidebar("dashboard.html")');
   const links=await evaluate('Array.from(document.querySelectorAll("nav a")).map(a=>a.getAttribute("href"))');
-  for(const link of ['dashboard.html','students.html','report-editor.html','mistakes.html','homework-students.html','homework.html'])assert.ok(links.includes(link));
+  for(const link of ['dashboard.html','students.html','report-editor.html','mistakes.html','homework-classes.html','homework-students.html','homework.html'])assert.ok(links.includes(link));
   await evaluate('document.getElementById("btnLogout").click()');assert.equal(await evaluate('window.oldLogoutCalled'),true);
  });
  await check('installed real SDK exposes required auth/call interfaces (no cloud calls)',async()=>{

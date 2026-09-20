@@ -88,8 +88,10 @@ try {
     const body = await evaluate('document.body.innerText');
     for (const value of ['作业学生管理', '数据源：hw_students', '虚构学生甲', '测试甲班', '正常（0.8）', '3 本', '已启用']) assert.ok(body.includes(value));
     assert.equal(await evaluate('document.getElementById("classFilter").options.length'), 3);
+    assert.equal(await evaluate('document.querySelector(`.sm-controls a[href="homework-classes.html?new=1"]`)!==null'), true);
     assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'homework-students.html');
     const links = await evaluate('Array.from(document.querySelectorAll(".adm-nav-item")).map(node=>node.getAttribute("href"))');
+    assert.ok(links.includes('homework-classes.html'));
     assert.equal(links.indexOf('homework.html') - links.indexOf('homework-students.html'), 1);
   });
   await check('class filter and name search only show matching students', async () => {

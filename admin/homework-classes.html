@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>作业班级管理 — 老师后台</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/homework.css">
+  <link rel="stylesheet" href="css/homework-classes.css">
+</head>
+<body class="adm-layout">
+  <aside class="adm-sidebar" id="sidebar">
+    <div class="adm-sidebar-brand">老师后台</div>
+    <nav class="adm-sidebar-nav" id="sidebarNav" aria-label="老师后台导航"></nav>
+  </aside>
+  <main class="adm-main">
+    <header class="adm-topbar">
+      <button class="adm-sidebar-toggle" id="sidebarToggle" aria-label="切换导航" aria-expanded="false">☰</button>
+      <strong>作业班级管理</strong><span class="adm-topbar-info" id="topbarInfo"></span>
+    </header>
+    <div class="adm-content cm-content">
+      <div class="cm-heading">
+        <div><h1>作业班级管理</h1><p>管理作业系统使用的班级。停用不会删除任何历史数据。</p></div>
+        <span class="cm-source">数据源：hw_classes</span>
+      </div>
+      <section class="adm-card hw-login" id="loginPanel" hidden>
+        <h2>验证作业访问权限</h2>
+        <p>请输入已开通作业权限的账号。班级操作会按小程序角色规则校验。</p>
+        <form id="homeworkLogin">
+          <label class="adm-form-label" for="homeworkUsername">作业访问账号</label>
+          <input class="adm-form-input" id="homeworkUsername" autocomplete="username" required maxlength="128">
+          <label class="adm-form-label" for="homeworkPassword">密码</label>
+          <input class="adm-form-input" id="homeworkPassword" type="password" autocomplete="current-password" required>
+          <button class="adm-btn adm-btn-primary" id="loginButton" type="submit">验证并进入</button>
+        </form>
+      </section>
+      <div id="classStatus" role="status" aria-live="polite"></div>
+      <button id="retryButton" class="adm-btn adm-btn-secondary" hidden>重新加载</button>
+      <section id="classPanel" hidden>
+        <div class="adm-card cm-toolbar">
+          <div><strong>班级列表</strong><p id="classSummary"></p></div>
+          <div class="cm-toolbar-actions"><button id="refreshClassButton" class="adm-btn adm-btn-secondary" type="button">刷新</button><button id="addClassButton" class="adm-btn adm-btn-primary" type="button">新增班级</button></div>
+        </div>
+        <div id="classList" class="cm-list"></div>
+      </section>
+    </div>
+  </main>
+  <dialog id="classDialog" class="cm-dialog">
+    <form id="classForm" class="cm-form">
+      <div class="cm-dialog-heading"><h2 id="classDialogTitle">新增班级</h2><button id="closeDialogButton" class="cm-close" type="button" aria-label="关闭">×</button></div>
+      <input id="classId" type="hidden">
+      <label for="className">班级名称<input id="className" class="adm-form-input" maxlength="100" required placeholder="例如：春日一班"></label>
+      <label for="classGrade">年级<input id="classGrade" class="adm-form-input" maxlength="32" required placeholder="例如：二年级"></label>
+      <p class="cm-warning">普通老师新增班级时会同步加入本人作业班级权限；负责人可直接管理全部班级；代班老师不能新增班级。</p>
+      <div class="cm-dialog-actions"><button id="cancelButton" class="adm-btn adm-btn-secondary" type="button">取消</button><button id="saveClassButton" class="adm-btn adm-btn-primary" type="submit">确认保存</button></div>
+    </form>
+  </dialog>
+  <script src="../js/cloudbase-v3.10.0.full.min.js"></script>
+  <script src="js/homework-config.js"></script>
+  <script src="js/homework-api.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/homework-classes.js"></script>
+</body>
+</html>
