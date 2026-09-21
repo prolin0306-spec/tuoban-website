@@ -601,7 +601,7 @@ test('createClass reuses mini-program fields and links an ordinary teacher atomi
   assert.equal((await s.handle({ action: 'createClass', name: '新建班', grade: '三年级' })).code, 'CLASS_EXISTS');
 });
 
-test('class creation, editing and activation enforce roles, access and empty-class safety', async () => {
+test('class creation, editing and activation enforce roles, access and active-student safety', async () => {
   const substituteData = fixture(); substituteData.hw_teachers[0].role = 'substituteTeacher';
   assert.equal((await setup(substituteData).handle({ action: 'createClass', name: '班级', grade: '一年级' })).code, 'FORBIDDEN');
   const d = fixture(), s = setup(d);
@@ -610,7 +610,12 @@ test('class creation, editing and activation enforce roles, access and empty-cla
   assert.equal((await s.handle({ action: 'updateClass', classId: 'class-c', name: '越权' })).code, 'FORBIDDEN');
   assert.equal((await s.handle({ action: 'setClassActive', classId: 'class-b', isActive: false })).code, 'FORBIDDEN');
   d.hw_teachers[0].role = 'boss';
-  assert.equal((await s.handle({ action: 'setClassActive', classId: 'class-a', isActive: false })).code, 'CLASS_NOT_EMPTY');
+  assert.equal((await s.handle({ action: 'setClassActive', classId: 'class-a', isActive: false })).code, 'CLASS_HAS_ACTIVE_STUDENTS');
+  d.hw_students.filter(student => student.classId === 'class-a').forEach(student => { student.isActive = false; });
+  const history = { books: structuredClone(d.hw_homework_books), plans: structuredClone(d.hw_daily_plans), records: structuredClone(d.hw_daily_records) };
+  let stoppedWithHistory = await s.handle({ action: 'setClassActive', classId: 'class-a', isActive: false });
+  assert.equal(stoppedWithHistory.code, 'OK'); assert.equal(d.hw_classes[0].isActive, false);
+  assert.deepEqual(d.hw_homework_books, history.books); assert.deepEqual(d.hw_daily_plans, history.plans); assert.deepEqual(d.hw_daily_records, history.records);
   let result = await s.handle({ action: 'setClassActive', classId: 'class-b', isActive: false });
   assert.equal(result.code, 'OK'); assert.equal(d.hw_classes[1].isActive, false); assert.equal(result.data.historyPreserved, true);
   result = await s.handle({ action: 'setClassActive', classId: 'class-b', isActive: true });

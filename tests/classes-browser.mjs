@@ -72,6 +72,8 @@ try {
     await until('document.querySelectorAll(".cm-class").length===2');
     const body = await evaluate('document.body.innerText');
     for (const value of ['作业班级管理', '测试甲班', '测试代班', '学生：2/2', '作业本：4', '计划：3']) assert.ok(body.includes(value));
+    assert.equal(await evaluate('document.querySelector(`.cm-class[data-class-id="class-a"] a[href="homework-students.html?classId=class-a"]`)!==null'), true);
+    assert.equal(await evaluate('document.querySelector(`.cm-class[data-class-id="class-a"] a[href="homework.html?classId=class-a"]`)!==null'), true);
     assert.equal(await evaluate('document.querySelectorAll(".cm-class .adm-btn-danger").length'), 0);
     assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'homework-classes.html');
     assert.equal(await evaluate('document.getElementById("classDialog").open'), true);
@@ -91,7 +93,7 @@ try {
     await evaluate(`document.getElementById('className').value='网页更新班';document.getElementById('classForm').requestSubmit()`);
     await until('document.body.innerText.includes("班级信息已更新")'); assert.equal(data.hw_classes.find(row => row._id === id).name, '网页更新班');
   });
-  await check('boss can toggle an empty class but nonempty class is blocked', async () => {
+  await check('boss can stop classes after all students are stopped while preserving history', async () => {
     data.hw_teachers[0].role = 'boss'; await evaluate('document.getElementById("refreshClassButton").click()');
     await until('document.querySelectorAll(".cm-class").length===4');
     await evaluate(`document.querySelector('.cm-class[data-class-id="class-b"] .adm-btn-danger').click()`);
@@ -99,7 +101,13 @@ try {
     await evaluate(`document.querySelector('.cm-class[data-class-id="class-b"] .adm-btn-primary').click()`);
     await until('document.querySelector(`.cm-class[data-class-id="class-b"]`).dataset.active==="true"'); assert.equal(data.hw_classes[1].isActive, true);
     await evaluate(`document.querySelector('.cm-class[data-class-id="class-a"] .adm-btn-danger').click()`);
-    await until('document.body.innerText.includes("班级仍有关联学生或作业数据")'); assert.equal(data.hw_classes[0].isActive, true);
+    await until('document.body.innerText.includes("班级仍有启用学生")'); assert.equal(data.hw_classes[0].isActive, true);
+    const history = JSON.stringify({ books: data.hw_homework_books, plans: data.hw_daily_plans, records: data.hw_daily_records });
+    data.hw_students.filter(student => student.classId === 'class-a').forEach(student => { student.isActive = false; });
+    await evaluate(`document.querySelector('.cm-class[data-class-id="class-a"] .adm-btn-danger').click()`);
+    await until('document.querySelector(`.cm-class[data-class-id="class-a"]`).dataset.active==="false"');
+    assert.equal(data.hw_classes[0].isActive, false);
+    assert.equal(JSON.stringify({ books: data.hw_homework_books, plans: data.hw_daily_plans, records: data.hw_daily_records }), history);
   });
   await check('class names render as text and mobile layout stays within viewport', async () => {
     data.hw_classes[0].name = '<img src=x onerror=alert(1)>'; await evaluate('document.getElementById("refreshClassButton").click()');

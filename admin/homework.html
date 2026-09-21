@@ -19,7 +19,7 @@
       <strong>作业工作台</strong><span class="adm-topbar-info" id="topbarInfo"></span>
     </header>
     <div class="adm-content hw-content">
-      <div class="hw-heading"><div><h1>作业录入工作台</h1><p>查看并生成今日计划，录入实际完成量，支持单个学生或全班批量添加作业本。</p></div><span class="hw-readonly">受控录入 V2</span></div>
+      <div class="hw-heading"><div><h1>班级作业清单</h1><p>选择班级布置作业；学生完成一项后，直接在该项作业后勾选完成。</p></div><span class="hw-readonly">班级模式</span></div>
       <section class="adm-card hw-login" id="loginPanel" hidden>
         <h2>验证作业访问权限</h2>
         <p>请输入已开通作业权限的账号。原后台登录不会自动获得作业权限。</p>
@@ -41,15 +41,17 @@
           <a class="adm-btn adm-btn-primary" href="homework-classes.html?new=1">新增班级</a>
         </div>
         <section class="adm-card hw-book-panel">
-          <h2>新增作业本</h2>
+          <h2>给当前班级布置作业</h2>
           <form id="bookForm" class="hw-book-form">
-            <label for="bookTarget">录入范围<select id="bookTarget" class="adm-form-select"><option value="student">单个学生</option><option value="class">当前班级全部启用学生</option></select></label>
+            <label for="bookTarget">布置范围<select id="bookTarget" class="adm-form-select"><option value="class">当前班级全部启用学生</option><option value="student">单个学生</option></select></label>
             <label id="bookStudentLabel" for="bookStudent">学生<select id="bookStudent" class="adm-form-select" required></select></label>
-            <label for="bookName">作业本名称<input id="bookName" class="adm-form-input" maxlength="100" required></label>
-            <label for="bookSubject">科目<input id="bookSubject" class="adm-form-input" maxlength="32" value="other" required></label>
-            <label for="bookTotal">总量<input id="bookTotal" class="adm-form-input" type="number" min="1" max="1000000" step="1" required></label>
-            <label for="bookWorkload">单位负载<input id="bookWorkload" class="adm-form-input" type="number" min="1" max="1000000" step="1" value="5" required></label>
+            <label for="bookName">作业名称<input id="bookName" class="adm-form-input" maxlength="100" required></label>
+            <label for="bookTotal">作业数量<input id="bookTotal" class="adm-form-input" type="number" min="1" max="1000000" step="1" required></label>
             <label for="bookUnit">单位<input id="bookUnit" class="adm-form-input" maxlength="16" value="页" required></label>
+            <details class="hw-book-advanced"><summary>更多设置</summary><div>
+              <label for="bookSubject">科目<input id="bookSubject" class="adm-form-input" maxlength="32" value="other" required></label>
+              <label for="bookWorkload">单位负载<input id="bookWorkload" class="adm-form-input" type="number" min="1" max="1000000" step="1" value="5" required></label>
+            </div></details>
             <button id="createBookButton" class="adm-btn adm-btn-primary" type="submit">新增作业本</button>
           </form>
           <p class="hw-muted">全班录入会为每名启用学生分别创建作业本。新增后不会自动改动已有计划；没有今日计划时可在学生卡片中手动生成。</p>

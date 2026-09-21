@@ -76,7 +76,7 @@ async function until(expression) {
  for(let i=0;i<150;i++){if(await evaluate(expression))return;await delay(40);} throw new Error('Browser condition timed out: '+expression);
 }
 async function check(name,fn){await fn();passes++;console.log('PASS '+name);}
-async function openPage(path='/admin/homework.html') {await send('Page.navigate',{url:origin+path});}
+async function openPage(path='/admin/homework.html?classId=class-a') {await send('Page.navigate',{url:origin+path});}
 try {
  let port;
  for(let i=0;i<150;i++) {try{port=(await readFile(join(profile,'DevToolsActivePort'),'utf8')).trim().split('\n');break;}catch(_){await delay(40);}}
@@ -100,6 +100,7 @@ try {
   await openPage();await until('document.querySelectorAll(".hw-student").length===2');
   assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
   assert.equal(await evaluate('document.getElementById("classSelect").options.length'),2);
+  assert.equal(await evaluate('document.getElementById("classSelect").value'),'class-a');
   assert.equal(await evaluate('document.querySelector(`.hw-controls a[href="homework-classes.html?new=1"]`)!==null'),true);
   await evaluate('document.querySelectorAll("details").forEach(e=>e.open=true)');
   const body=await evaluate('document.body.innerText');
@@ -134,7 +135,7 @@ try {
  });
  await check('create book keeps mini-program defaults and does not alter existing plans',async()=>{
   const plansBefore=JSON.stringify(data.hw_daily_plans);
-  await evaluate(`(()=>{document.getElementById('bookStudent').value='student-b';document.getElementById('bookName').value='网页练习册';document.getElementById('bookSubject').value='math';document.getElementById('bookTotal').value='24';document.getElementById('bookWorkload').value='5';document.getElementById('bookUnit').value='页';document.getElementById('bookForm').requestSubmit()})()`);
+  await evaluate(`(()=>{document.getElementById('bookTarget').value='student';document.getElementById('bookTarget').dispatchEvent(new Event('change'));document.getElementById('bookStudent').value='student-b';document.getElementById('bookName').value='网页练习册';document.getElementById('bookSubject').value='math';document.getElementById('bookTotal').value='24';document.getElementById('bookWorkload').value='5';document.getElementById('bookUnit').value='页';document.getElementById('bookForm').requestSubmit()})()`);
   await until('document.body.innerText.includes("已新增作业本“网页练习册”")');
   const book=data.hw_homework_books.find(row=>row.name==='网页练习册');assert.ok(book);
   assert.deepEqual({studentId:book.studentId,classId:book.classId,subject:book.subject,totalAmount:book.totalAmount,
@@ -162,6 +163,17 @@ try {
   assert.equal(data.hw_daily_plans.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today).isCompleted,false);
   await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"]').open=true`);
  assert.equal(await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"] [data-record-input="book-d"]').value`),'0');
+ });
+ await check('each planned task can be checked complete and unchecked to recorded zero',async()=>{
+  await evaluate(`(()=>{const card=document.querySelector('.hw-student[data-student-id="student-b"]');card.open=true;card.querySelector('[data-completion-toggle="book-d"]').click()})()`);
+  await until('document.body.innerText.includes("虚构学生乙 · 测试作业d 已标记为完成")');
+  let record=data.hw_daily_records.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today);
+  const plan=data.hw_daily_plans.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today);
+  assert.equal(record.actualAmount,plan.plannedAmount);assert.equal(plan.isCompleted,true);
+  await evaluate(`(()=>{const card=document.querySelector('.hw-student[data-student-id="student-b"]');card.open=true;card.querySelector('[data-completion-toggle="book-d"]').click()})()`);
+  await until('document.body.innerText.includes("虚构学生乙 · 测试作业d 已标记为未完成")');
+  record=data.hw_daily_records.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today);
+  assert.equal(record.actualAmount,0);assert.equal(plan.isCompleted,false);
  });
  await check('one class input creates separate books for every active student without plans',async()=>{
   const plansBefore=JSON.stringify(data.hw_daily_plans),before=data.hw_homework_books.length;

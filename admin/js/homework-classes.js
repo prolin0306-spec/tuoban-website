@@ -19,7 +19,7 @@
   }
   function render() {
     $('classList').replaceChildren(); $('addClassButton').hidden = !state.canCreate;
-    $('classSummary').textContent = `${state.classes.length} 个可管理班级；负责人可停用空班级，历史数据不会删除。`;
+    $('classSummary').textContent = `${state.classes.length} 个可管理班级；负责人可停用没有启用学生的班级，历史数据不会删除。`;
     if (!state.classes.length) { $('classList').append(element('p', '暂无可管理班级', 'adm-card cm-empty')); return; }
     for (const cls of state.classes) {
       const card = element('article', undefined, 'adm-card cm-class'); card.dataset.classId = cls.id; card.dataset.active = String(cls.isActive);
@@ -28,11 +28,16 @@
       metrics.append(element('span', `年级：${cls.grade || '未填写'}`), element('span', `学生：${cls.activeStudentCount}/${cls.studentCount}`),
         element('span', `作业本：${cls.bookCount}`), element('span', `计划：${cls.planCount}`));
       const actions = element('div', undefined, 'cm-actions');
+      if (cls.isActive) {
+        const studentsLink = element('a', '管理学生', 'adm-btn adm-btn-primary'); studentsLink.href = `homework-students.html?classId=${encodeURIComponent(cls.id)}`;
+        const homeworkLink = element('a', '管理作业', 'adm-btn adm-btn-primary'); homeworkLink.href = `homework.html?classId=${encodeURIComponent(cls.id)}`;
+        actions.append(studentsLink, homeworkLink);
+      }
       const edit = element('button', '编辑', 'adm-btn adm-btn-secondary'); edit.type = 'button'; edit.addEventListener('click', () => openDialog(cls)); actions.append(edit);
       if (state.canDeactivate) {
         const toggle = element('button', cls.isActive ? '停用班级' : '重新启用', cls.isActive ? 'adm-btn adm-btn-danger' : 'adm-btn adm-btn-primary'); toggle.type = 'button';
         toggle.addEventListener('click', () => {
-          const detail = cls.isActive ? `确认停用“${cls.name}”？仅空班级可以停用，且不会删除历史数据。` : `确认重新启用“${cls.name}”？`;
+          const detail = cls.isActive ? `确认停用“${cls.name}”？班级必须没有启用学生；停用学生及全部历史数据都会保留。` : `确认重新启用“${cls.name}”？`;
           if (!window.confirm(detail)) return;
           run(toggle, () => api.setClassActive(cls.id, !cls.isActive), cls.isActive ? '班级已停用，历史数据保持不变' : '班级已重新启用');
         }); actions.append(toggle);

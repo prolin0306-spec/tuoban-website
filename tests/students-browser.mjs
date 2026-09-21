@@ -81,13 +81,14 @@ try {
   const target = await send('Target.createTarget', { url: 'about:blank' }, null);
   sessionId = (await send('Target.attachToTarget', { targetId: target.targetId, flatten: true }, null)).sessionId;
   await send('Page.enable'); await send('Runtime.enable'); await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
-  await send('Page.navigate', { url: origin + '/admin/homework-students.html' });
+  await send('Page.navigate', { url: origin + '/admin/homework-students.html?classId=class-a' });
 
   await check('authorized list shows status, class, speed and book counts', async () => {
     await until('document.querySelectorAll(".sm-student").length===2');
     const body = await evaluate('document.body.innerText');
     for (const value of ['作业学生管理', '数据源：hw_students', '虚构学生甲', '测试甲班', '正常（0.8）', '3 本', '已启用']) assert.ok(body.includes(value));
     assert.equal(await evaluate('document.getElementById("classFilter").options.length'), 3);
+    assert.equal(await evaluate('document.getElementById("classFilter").value'), 'class-a');
     assert.equal(await evaluate('document.querySelector(`.sm-controls a[href="homework-classes.html?new=1"]`)!==null'), true);
     assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'homework-students.html');
     const links = await evaluate('Array.from(document.querySelectorAll(".adm-nav-item")).map(node=>node.getAttribute("href"))');
@@ -108,6 +109,7 @@ try {
   await check('add form uses normal speed default and second confirmation', async () => {
     await evaluate(`document.getElementById('addButton').click()`); await until('document.getElementById("studentDialog").open');
     assert.equal(await evaluate('document.getElementById("studentSpeed").value'), 'normal');
+    assert.equal(await evaluate('document.getElementById("studentClass").value'), 'class-a');
     await evaluate(`document.getElementById('studentName').value='新增学生';document.getElementById('studentGrade').value='二年级';document.getElementById('studentClass').value='class-a';document.getElementById('studentForm').requestSubmit()`);
     await until('document.body.innerText.includes("学生已新增")');
     const student = data.hw_students.find(row => row.name === '新增学生'); assert.ok(student);

@@ -3,6 +3,7 @@
   const $ = id => document.getElementById(id);
   const api = window.createHomeworkAPI(window.HOMEWORK_CONFIG, window.cloudbase);
   let generation = 0, active = false, pendingBatchId = null;
+  const requestedClassId = new URLSearchParams(window.location.search).get('classId') || '';
   const statuses = { unrecorded: '未记录', zero: '已记录：完成量为 0', partial: '部分完成', completed: '已完成',
     recorded: '已有实际记录', invalid: '记录数据不足', conflict: '数据需核对' };
   const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -70,6 +71,21 @@
     });
     label.append(input); form.append(label, button, result); return form;
   }
+  function completionToggle(student, task, date, today) {
+    const label = element('label', undefined, 'hw-complete-toggle');
+    const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = task.status === 'completed';
+    checkbox.dataset.completionToggle = task.homeworkBookId;
+    const invalid = !task.hasPlan || !finite(task.planned) || task.status === 'conflict' || date > today;
+    checkbox.disabled = invalid;
+    checkbox.addEventListener('change', async () => {
+      const checked = checkbox.checked, amount = checked ? task.planned : 0; checkbox.disabled = true; message('正在保存完成状态…');
+      try {
+        await api.saveDailyRecord({ studentId: student.id, homeworkBookId: task.homeworkBookId, date, actualAmount: amount });
+        await loadWorkspace(); message(`${student.name || '该学生'} · ${task.bookName} 已标记为${checked ? '完成' : '未完成'}`);
+      } catch (error) { checkbox.checked = !checked; checkbox.disabled = invalid; message(error.message || '保存失败，请重试', 'error'); }
+    });
+    label.append(checkbox, element('span', checkbox.checked ? '已完成' : '完成')); return label;
+  }
   function render(data) {
     if (!data || !Array.isArray(data.students) || !data.summary) throw new Error('作业服务返回无效数据');
     $('studentCards').replaceChildren(); $('bookStudent').replaceChildren();
@@ -108,13 +124,16 @@
       const tasks = element('ul', undefined, 'hw-tasks');
       for (const task of student.tasks) {
         const row = element('li', undefined, 'hw-task'); row.dataset.bookId = task.homeworkBookId || '';
-        row.append(element('h3', task.bookName || '作业本信息缺失'));
+        const heading = element('div', undefined, 'hw-task-heading'); heading.append(element('h3', task.bookName || '作业本信息缺失'));
+        if (task.hasPlan) heading.append(completionToggle(student, task, data.date, data.today)); row.append(heading);
         const values = element('div', undefined, 'hw-task-values');
         values.append(element('span', `计划：${finite(task.planned) ? task.planned + ' ' + task.unit : '尚未生成计划'}`));
         values.append(element('span', `实际：${finite(task.actual) ? task.actual + ' ' + task.unit : task.status === 'unrecorded' ? '未记录' : '数据需核对'}`));
         row.append(values, element('p', statuses[task.status] || '状态待核对'));
         if (task.warning) row.append(element('p', task.warning, 'hw-muted'));
-        if (task.hasPlan) row.append(recordEditor(student, task, data.date, data.today));
+        if (task.hasPlan) {
+          const advanced = element('details', undefined, 'hw-advanced'); advanced.append(element('summary', '调整完成量'), recordEditor(student, task, data.date, data.today)); row.append(advanced);
+        }
         tasks.append(row);
       }
       card.append(tasks); $('studentCards').append(card);
@@ -142,6 +161,7 @@
       $('classSelect').replaceChildren();
       for (const cls of classes) { const option = element('option', cls.name || '未命名班级'); option.value = cls.id; $('classSelect').append(option); }
       if (!classes.length) { message('暂无授权班级，请联系管理员分配班级或代班权限'); return; }
+      if (requestedClassId && classes.some(cls => cls.id === requestedClassId)) $('classSelect').value = requestedClassId;
       $('workspacePanel').hidden = false; await loadWorkspace();
     } catch (error) { if (sequence === generation) failure(error); }
   }

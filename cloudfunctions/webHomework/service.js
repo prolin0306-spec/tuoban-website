@@ -163,12 +163,8 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
     return repo.runTransaction(async transaction => {
       const cls = await resolveManagedClass(event.classId, auth, transaction);
       if (!event.isActive) {
-        const collections = ['hw_students', 'hw_homework_books', 'hw_daily_plans', 'hw_daily_records'];
-        for (const collection of collections) {
-          if ((await transaction.list(collection, { classId: cls._id })).length) {
-            fail('CLASS_NOT_EMPTY', '班级仍有关联学生或作业数据，不能停用');
-          }
-        }
+        const activeStudents = await transaction.list('hw_students', { classId: cls._id, isActive: true });
+        if (activeStudents.length) fail('CLASS_HAS_ACTIVE_STUDENTS', '班级仍有启用学生，请先停用这些学生');
       }
       const update = { isActive: event.isActive, updatedAt: now(), operatorTeacherId: auth.teacher._id };
       await transaction.update('hw_classes', cls._id, update);

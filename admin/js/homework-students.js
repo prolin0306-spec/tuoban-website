@@ -4,6 +4,7 @@
   const api = window.createHomeworkAPI(window.HOMEWORK_CONFIG, window.cloudbase);
   const speedNames = { slow: '偏慢', normal: '正常', fast: '偏快' };
   let active = false, generation = 0, classes = [], students = [], editing = null;
+  let requestedClassId = new URLSearchParams(window.location.search).get('classId') || '';
 
   function element(tag, text, className) {
     const node = document.createElement(tag);
@@ -60,10 +61,13 @@
     if (!active) return;
     const sequence = ++generation; clearStudents(); message('正在加载学生…'); $('retryButton').hidden = true;
     try {
-      const data = await api.students({ classId: $('classFilter').value, query: $('nameSearch').value.trim() });
+      const selectedClassId = $('classFilter').value || (!classes.length ? requestedClassId : '');
+      const data = await api.students({ classId: selectedClassId, query: $('nameSearch').value.trim() });
       if (sequence !== generation) return;
       if (!data || !Array.isArray(data.classes) || !Array.isArray(data.students)) throw new Error('学生服务返回无效数据');
-      classes = data.classes; students = data.students; renderClassOptions($('classFilter'), true); render(); message('');
+      classes = data.classes; students = data.students; renderClassOptions($('classFilter'), true);
+      if (requestedClassId && classes.some(cls => cls.id === requestedClassId)) $('classFilter').value = requestedClassId;
+      requestedClassId = ''; render(); message('');
     } catch (error) { if (sequence === generation) failure(error); }
   }
   async function start() {
@@ -84,7 +88,7 @@
     $('studentId').value = student ? student.id : '';
     $('studentName').value = student ? student.name : '';
     $('studentGrade').value = student ? student.grade : '';
-    $('studentClass').value = student ? student.classId : (classes[0] ? classes[0].id : '');
+    $('studentClass').value = student ? student.classId : ($('classFilter').value || (classes[0] ? classes[0].id : ''));
     $('studentSpeed').value = student && Object.hasOwn(speedNames, student.speedLevel) ? student.speedLevel : 'normal';
     $('studentFormTitle').textContent = student ? '编辑学生' : '新增学生';
     $('classChangeWarning').hidden = !(student && student.hasCurrentOrFuturePlan);
