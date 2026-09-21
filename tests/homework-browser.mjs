@@ -101,7 +101,8 @@ try {
   assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
   assert.equal(await evaluate('document.getElementById("classSelect").options.length'),2);
   assert.equal(await evaluate('document.getElementById("classSelect").value'),'class-a');
-  assert.equal(await evaluate('document.querySelector(`.hw-controls a[href="homework-classes.html?new=1"]`)!==null'),true);
+  assert.equal(await evaluate('document.querySelector(`.hw-controls a[href="homework-classes.html"]`)!==null'),true);
+  assert.equal(await evaluate('document.getElementById("classStudentsLink").getAttribute("href")'),'homework-students.html?classId=class-a');
   await evaluate('document.querySelectorAll("details").forEach(e=>e.open=true)');
   const body=await evaluate('document.body.innerText');
   for(const label of ['实际：0','未记录','部分完成','尚未生成计划','预计完成率','实际完成率','优先级：','测试甲班'])assert.ok(body.includes(label));
@@ -136,7 +137,7 @@ try {
  await check('create book keeps mini-program defaults and does not alter existing plans',async()=>{
   const plansBefore=JSON.stringify(data.hw_daily_plans);
   await evaluate(`(()=>{document.getElementById('bookTarget').value='student';document.getElementById('bookTarget').dispatchEvent(new Event('change'));document.getElementById('bookStudent').value='student-b';document.getElementById('bookName').value='网页练习册';document.getElementById('bookSubject').value='math';document.getElementById('bookTotal').value='24';document.getElementById('bookWorkload').value='5';document.getElementById('bookUnit').value='页';document.getElementById('bookForm').requestSubmit()})()`);
-  await until('document.body.innerText.includes("已新增作业本“网页练习册”")');
+  await until('document.body.innerText.includes("已保存 1 项作业，覆盖 1 名学生、1 本作业本")');
   const book=data.hw_homework_books.find(row=>row.name==='网页练习册');assert.ok(book);
   assert.deepEqual({studentId:book.studentId,classId:book.classId,subject:book.subject,totalAmount:book.totalAmount,
    workloadPerUnit:book.workloadPerUnit,unit:book.unit,completedAmount:book.completedAmount,isActive:book.isActive},
@@ -178,13 +179,23 @@ try {
  await check('one class input creates separate books for every active student without plans',async()=>{
   const plansBefore=JSON.stringify(data.hw_daily_plans),before=data.hw_homework_books.length;
   await evaluate(`(()=>{document.getElementById('bookTarget').value='class';document.getElementById('bookTarget').dispatchEvent(new Event('change'));document.getElementById('bookName').value='全班统一作业';document.getElementById('bookSubject').value='chinese';document.getElementById('bookTotal').value='18';document.getElementById('bookWorkload').value='3';document.getElementById('bookUnit').value='页';document.getElementById('bookForm').requestSubmit()})()`);
-  await until('document.body.innerText.includes("已为 2 名启用学生分别新增作业本")');
+  await until('document.body.innerText.includes("已保存 1 项作业，覆盖 2 名学生、2 本作业本")');
   const books=data.hw_homework_books.slice(before);assert.equal(books.length,2);
   assert.deepEqual(books.map(row=>row.studentId).sort(),['student-a','student-b']);
   assert.ok(books.every(row=>row.name==='全班统一作业'&&row.classId==='class-a'&&row.completedAmount===0&&row.batchId));
   assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
   assert.equal(await evaluate('document.getElementById("bookStudentLabel").hidden'),true);
   assert.ok((await evaluate('window.__test.confirms')).at(-1).includes('全部启用学生'));
+ });
+ await check('several names keep their own quantities in one class submission',async()=>{
+  const plansBefore=JSON.stringify(data.hw_daily_plans),before=data.hw_homework_books.length;
+  await evaluate(`(()=>{document.getElementById('bookName').value='语文阅读';document.getElementById('bookTotal').value='12';document.getElementById('addBookItemButton').click();const row=document.querySelectorAll('[data-book-item]')[1];row.querySelector('[data-book-field="name"]').value='数学口算';row.querySelector('[data-book-field="totalAmount"]').value='30';row.querySelector('[data-book-field="unit"]').value='题';document.getElementById('bookForm').requestSubmit()})()`);
+  await until('document.body.innerText.includes("已保存 2 项作业，覆盖 2 名学生、4 本作业本")');
+  const books=data.hw_homework_books.slice(before);assert.equal(books.length,4);
+  for(const studentId of ['student-a','student-b']) assert.deepEqual(books.filter(row=>row.studentId===studentId).map(row=>[row.name,row.totalAmount,row.unit]),[['语文阅读',12,'页'],['数学口算',30,'题']]);
+  assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
+  assert.equal(await evaluate('document.querySelectorAll("[data-book-item]").length'),1);
+  assert.ok((await evaluate('window.__test.confirms')).at(-1).includes('数学口算：30 题'));
  });
  await check('mobile layout, navigation and expandable tasks',async()=>{
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});

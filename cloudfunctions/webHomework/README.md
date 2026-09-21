@@ -15,6 +15,7 @@
 - `setStudentActive`：只切换 `hw_students.isActive` 并写审计字段，不删除学生或任何历史作业数据。
 - `createBook`：为获授权班级中的启用学生新增 `hw_homework_books`，字段和默认值沿用小程序 `books/add`；不自动改动计划。
 - `createClassBooks`：一次输入后，在同一事务内为获授权班级的每名启用学生分别创建独立 `hw_homework_books`；最多 100 名学生，使用请求标识提供幂等重试，不共享完成量，也不自动生成或重建计划。
+- `createBookList`：一次提交 1–20 组一一对应的作业名称、数量、单位和小程序作业本字段；为单个获授权学生或当前班级全部启用学生在同一事务内创建独立作业本，最多 300 本。请求标识保证重复提交幂等；不自动生成或重建计划。
 - `generateTodayPlan`：显式为一个学生生成当天计划。复用小程序的工作日、剩余量和整数分配规则；当天任一计划已存在时整体拒绝，没有剩余任务时不产生成功写入，不删除或重建未来计划。
 - `saveDailyRecord`：新增或更新学生当天同一作业本的唯一记录，同步 `hw_daily_plans.isCompleted` 和 `hw_homework_books.completedAmount`。重复保存按“新实际量 - 旧实际量”更新累计量；允许实际完成量为 0，未提交仍保持无记录状态。累计量必须位于 `0..totalAmount`。
 

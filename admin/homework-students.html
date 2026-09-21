@@ -21,7 +21,7 @@
     </header>
     <div class="adm-content sm-content">
       <div class="sm-heading">
-        <div><h1>作业学生管理</h1><p>按班级录入和管理学生，再回到对应班级管理作业。</p></div>
+        <div><p><a href="homework-classes.html">作业班级管理</a> › 作业学生管理</p><h1>作业学生管理</h1><p>按班级录入和管理学生，再到该班级的作业工作台。</p></div>
         <span class="sm-source">数据源：hw_students</span>
       </div>
 
@@ -50,7 +50,8 @@
           </label>
           <button id="searchButton" class="adm-btn adm-btn-secondary" type="button">搜索</button>
           <button id="refreshButton" class="adm-btn adm-btn-secondary" type="button">刷新</button>
-          <a class="adm-btn adm-btn-secondary" href="homework-classes.html?new=1">新增班级</a>
+          <a class="adm-btn adm-btn-secondary" href="homework-classes.html">返回班级管理</a>
+          <a id="classHomeworkLink" class="adm-btn adm-btn-secondary" href="homework.html" hidden>本班作业</a>
           <button id="addButton" class="adm-btn adm-btn-primary" type="button">新增学生</button>
         </div>
         <p id="studentSummary" class="sm-summary" aria-live="polite"></p>

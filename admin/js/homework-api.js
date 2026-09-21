@@ -88,6 +88,7 @@
       setStudentActive: (studentId, isActive) => invoke('setStudentActive', { studentId, isActive }),
       createBook: book => invoke('createBook', book),
       createClassBooks: value => invoke('createClassBooks', value),
+      createBookList: value => invoke('createBookList', value),
       generateTodayPlan: studentId => invoke('generateTodayPlan', { studentId }),
       saveDailyRecord: record => invoke('saveDailyRecord', record),
       async logout() {

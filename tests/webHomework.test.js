@@ -649,6 +649,58 @@ test('createClassBooks fans one input out to active students without generating 
   const repeated = await s.handle(event); assert.equal(repeated.code, 'OK'); assert.equal(repeated.data.repeated, true); assert.equal(s.mock.writes, writes);
 });
 
+test('createBookList binds each name to its own quantity and saves all students atomically', async () => {
+  const d = fixture(), s = setup(d), before = d.hw_homework_books.length, plans = structuredClone(d.hw_daily_plans);
+  const event = { action: 'createBookList', classId: 'class-a', requestId: 'list-request-001', books: [
+    { name: '语文阅读', totalAmount: 12, unit: '页' },
+    { name: '数学口算', totalAmount: 30, unit: '题', subject: 'math', workloadPerUnit: 2 }
+  ] };
+  const result = await s.handle(event);
+  assert.equal(result.code, 'OK'); assert.equal(result.data.studentCount, 2);
+  assert.equal(result.data.bookCount, 2); assert.equal(result.data.createdCount, 4);
+  const created = d.hw_homework_books.slice(before);
+  for (const studentId of ['student-a', 'student-b']) {
+    assert.deepEqual(created.filter(row => row.studentId === studentId).map(row => [row.name, row.totalAmount, row.unit]),
+      [['语文阅读', 12, '页'], ['数学口算', 30, '题']]);
+  }
+  assert.ok(created.every(row => row.isActive && row.completedAmount === 0 && row.batchId === event.requestId));
+  assert.deepEqual(d.hw_daily_plans, plans);
+  const writes = s.mock.writes;
+  const retry = await s.handle(event); assert.equal(retry.code, 'OK'); assert.equal(retry.data.repeated, true);
+  assert.equal(s.mock.writes, writes);
+  const changed = await s.handle({ ...event, books: [{ ...event.books[0], totalAmount: 13 }, event.books[1]] });
+  assert.equal(changed.code, 'DATA_CHANGED'); assert.equal(s.mock.writes, writes);
+  assert.equal((await s.handle({ ...event, books: [event.books[0]] })).code, 'DATA_CHANGED');
+  assert.equal(s.mock.writes, writes);
+});
+
+test('createBookList restricts student and class scope and rolls back the entire list', async () => {
+  const event = { action: 'createBookList', classId: 'class-a', requestId: 'list-request-002',
+    books: [{ name: '练习一', totalAmount: 4 }, { name: '练习二', totalAmount: 7 }] };
+  const d = fixture(), s = setup(d), before = structuredClone(d);
+  s.mock.failWrite = ({ collection, writeNumber }) => collection === 'hw_homework_books' && writeNumber === 3;
+  assert.equal((await s.handle(event)).code, 'UNAVAILABLE'); assert.deepEqual(d, before); assert.equal(s.mock.writes, 0);
+  assert.equal((await setup().handle({ ...event, classId: 'class-c' })).code, 'FORBIDDEN');
+  const other = fixture(); other.hw_students.push({ _id: 'student-c', classId: 'class-c', isActive: true });
+  assert.equal((await setup(other).handle({ ...event, studentId: 'student-c' })).code, 'FORBIDDEN');
+  assert.equal((await setup().handle({ ...event, books: [{ name: '错误', totalAmount: 0 }] })).code, 'BAD_REQUEST');
+  assert.equal((await setup().handle({ ...event, books: [{ name: '错误', totalAmount: 1, isActive: true }] })).code, 'BAD_REQUEST');
+  const inactive = fixture(); inactive.hw_students[0].isActive = false;
+  assert.equal((await setup(inactive).handle({ ...event, studentId: 'student-a' })).code, 'NOT_FOUND');
+  const one = setup(); const saved = await one.handle({ ...event, studentId: 'student-b' });
+  assert.equal(saved.code, 'OK'); assert.equal(saved.data.createdCount, 2);
+  assert.ok(one.data.hw_homework_books.filter(row => row.batchId === event.requestId).every(row => row.studentId === 'student-b'));
+});
+
+test('concurrent repeated createBookList requests never duplicate a class assignment', async () => {
+  const s = setup(), event = { action: 'createBookList', classId: 'class-a', requestId: 'list-concurrent-01',
+    books: [{ name: '第一项', totalAmount: 3 }, { name: '第二项', totalAmount: 8 }] };
+  const results = await Promise.all([s.handle(event), s.handle(event)]);
+  assert.deepEqual(results.map(result => result.code), ['OK', 'OK']);
+  assert.equal(results.filter(result => result.data.repeated).length, 1);
+  assert.equal(s.data.hw_homework_books.filter(row => row.batchId === event.requestId).length, 4);
+});
+
 test('class batch books exclude inactive students and reject empty, oversized and unauthorized classes', async () => {
   const base = { action: 'createClassBooks', requestId: 'batch-request-002', name: '班级作业', totalAmount: 10 };
   const d = fixture(); d.hw_students[1].isActive = false; const s = setup(d);

@@ -27,7 +27,26 @@
   function syncBookTarget() {
     const batch = $('bookTarget').value === 'class';
     $('bookStudentLabel').hidden = batch; $('bookStudent').required = !batch;
-    $('createBookButton').textContent = batch ? '为全班新增作业本' : '新增作业本';
+    $('createBookButton').textContent = batch ? '为全班保存全部作业' : '为该学生保存全部作业';
+  }
+  function bookRows() { return [...$('bookItems').querySelectorAll('[data-book-item]')]; }
+  function renumberBookRows() {
+    const rows = bookRows();
+    rows.forEach((row, index) => {
+      row.querySelector('legend').textContent = `第 ${index + 1} 项作业`;
+      row.querySelector('[data-remove-book]').hidden = rows.length === 1;
+    });
+  }
+  function addBookRow() {
+    if (bookRows().length >= 20) { message('一次最多录入 20 项作业，请分批保存', 'error'); return; }
+    const row = bookRows()[0].cloneNode(true);
+    row.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
+    row.querySelectorAll('[data-book-field]').forEach(input => {
+      input.value = { subject: 'other', unit: '页', workloadPerUnit: '5' }[input.dataset.bookField] || '';
+    });
+    row.querySelector('details').open = false;
+    $('bookItems').append(row); renumberBookRows(); pendingBatchId = null;
+    row.querySelector('[data-book-field="name"]').focus();
   }
   function failure(error) {
     clearData(); message(error.message || '加载失败，请重试', 'error');
@@ -141,6 +160,7 @@
   }
   async function loadWorkspace() {
     if (!active || !$('classSelect').value) return;
+    $('classStudentsLink').href = `homework-students.html?classId=${encodeURIComponent($('classSelect').value)}`;
     const sequence = ++generation;
     $('studentCards').replaceChildren(); $('homeworkSummary').textContent = ''; message('正在加载任务与实际记录…');
     $('retryButton').hidden = true; $('studentCards').setAttribute('aria-busy', 'true');
@@ -178,23 +198,33 @@
   });
   $('bookForm').addEventListener('submit', async event => {
     event.preventDefault(); const button = $('createBookButton');
-    const values = { name: $('bookName').value, subject: $('bookSubject').value, totalAmount: Number($('bookTotal').value),
-      workloadPerUnit: Number($('bookWorkload').value), unit: $('bookUnit').value };
+    const books = bookRows().map(row => {
+      const value = key => row.querySelector(`[data-book-field="${key}"]`).value;
+      return { name: value('name').trim(), subject: value('subject'), totalAmount: Number(value('totalAmount')),
+        workloadPerUnit: Number(value('workloadPerUnit')), unit: value('unit') };
+    });
     const batch = $('bookTarget').value === 'class';
-    if (batch && !window.confirm(`确认为当前班级全部启用学生分别新增作业本“${values.name.trim()}”？不会自动生成或重建计划。`)) return;
-    if (batch && !pendingBatchId) pendingBatchId = requestId();
-    await runAction(button, () => batch ? api.createClassBooks({ ...values, classId: $('classSelect').value, requestId: pendingBatchId }) :
-      api.createBook({ ...values, studentId: $('bookStudent').value }), result => {
-      $('bookName').value = ''; $('bookTotal').value = '';
-      if (batch) pendingBatchId = null;
-      return batch ? `${result.repeated ? '已确认' : '已为'} ${result.createdCount} 名启用学生${result.repeated ? '已有对应' : '分别新增'}作业本“${result.bookName}”；已有计划未被修改` :
-        `已新增作业本“${result.book.name}”；已有计划未被修改`;
+    const scope = batch ? '当前班级全部启用学生' : $('bookStudent').selectedOptions[0]?.textContent || '该学生';
+    const details = books.map(item => `${item.name}：${item.totalAmount} ${item.unit}`).join('、');
+    if (!window.confirm(`确认为${scope}一次录入 ${books.length} 项作业？\n${details}\n不会自动生成或重建计划。`)) return;
+    if (!pendingBatchId) pendingBatchId = requestId();
+    await runAction(button, () => api.createBookList({ classId: $('classSelect').value,
+      ...(batch ? {} : { studentId: $('bookStudent').value }), requestId: pendingBatchId, books }), result => {
+      bookRows().slice(1).forEach(row => row.remove()); $('bookForm').reset(); renumberBookRows(); syncBookTarget();
+      pendingBatchId = null;
+      return `${result.repeated ? '已确认' : '已保存'} ${result.bookCount} 项作业，覆盖 ${result.studentCount} 名学生、${result.createdCount} 本作业本；已有计划未被修改`;
     });
   });
   $('retryButton').addEventListener('click', start); $('refreshButton').addEventListener('click', loadWorkspace);
   $('classSelect').addEventListener('change', () => { pendingBatchId = null; loadWorkspace(); }); $('dateSelect').addEventListener('change', loadWorkspace);
   $('bookTarget').addEventListener('change', () => { pendingBatchId = null; syncBookTarget(); });
-  for (const id of ['bookName', 'bookSubject', 'bookTotal', 'bookWorkload', 'bookUnit']) $(id).addEventListener('input', () => { pendingBatchId = null; });
+  $('bookStudent').addEventListener('change', () => { pendingBatchId = null; });
+  $('bookItems').addEventListener('input', () => { pendingBatchId = null; });
+  $('bookItems').addEventListener('click', event => {
+    const button = event.target.closest('[data-remove-book]'); if (!button) return;
+    button.closest('[data-book-item]').remove(); renumberBookRows(); pendingBatchId = null;
+  });
+  $('addBookItemButton').addEventListener('click', addBookRow);
   syncBookTarget();
   $('sidebarToggle').addEventListener('click', () => setTimeout(() => $('sidebarToggle').setAttribute('aria-expanded', String($('sidebar').classList.contains('open'))), 0));
   $('dateSelect').value = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);

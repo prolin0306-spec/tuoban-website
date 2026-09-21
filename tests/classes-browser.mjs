@@ -76,6 +76,9 @@ try {
     assert.equal(await evaluate('document.querySelector(`.cm-class[data-class-id="class-a"] a[href="homework.html?classId=class-a"]`)!==null'), true);
     assert.equal(await evaluate('document.querySelectorAll(".cm-class .adm-btn-danger").length'), 0);
     assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'homework-classes.html');
+    assert.equal(await evaluate('document.querySelector(".adm-nav-group > .adm-nav-item")?.getAttribute("href")'), 'homework-classes.html');
+    assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".adm-nav-children .adm-nav-item")).map(node=>node.getAttribute("href"))'),
+      ['homework-students.html', 'homework.html']);
     assert.equal(await evaluate('document.getElementById("classDialog").open'), true);
     await evaluate('document.getElementById("cancelButton").click()');
   });

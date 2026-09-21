@@ -86,6 +86,8 @@ a { text-decoration: none; color: inherit; }
 .adm-nav-item:hover { background: rgba(255,255,255,.1); color: #fff; }
 .adm-nav-item.active { background: var(--primary); color: #fff; }
 .adm-nav-item i { width: 20px; text-align: center; }
+.adm-nav-children { margin: 2px 0 8px 22px; border-left: 1px solid rgba(255,255,255,.25); padding-left: 6px; }
+.adm-nav-child { font-size: 14px; padding: 9px 12px; }
 
 .adm-nav-logout { margin-top: auto; color: rgba(255,255,255,.5); }
 

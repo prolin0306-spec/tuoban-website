@@ -40,6 +40,7 @@ test('function and actions are fixed; no teacher identity or collection forwarde
   await a.setStudentActive('student-a', false);
   await a.createBook({ studentId: 'student-a', name: '练习册', totalAmount: 10 });
   await a.createClassBooks({ classId: 'class-a', requestId: 'request-1234', name: '全班练习', totalAmount: 10 });
+  await a.createBookList({ classId: 'class-a', requestId: 'request-5678', books: [{ name: '语文', totalAmount: 10 }] });
   await a.generateTodayPlan('student-a');
   await a.saveDailyRecord({ studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 0 });
   assert.deepEqual(s.calls, [
@@ -56,6 +57,7 @@ test('function and actions are fixed; no teacher identity or collection forwarde
     { name: 'webHomework', data: { action: 'setStudentActive', studentId: 'student-a', isActive: false } },
     { name: 'webHomework', data: { action: 'createBook', studentId: 'student-a', name: '练习册', totalAmount: 10 } },
     { name: 'webHomework', data: { action: 'createClassBooks', classId: 'class-a', requestId: 'request-1234', name: '全班练习', totalAmount: 10 } },
+    { name: 'webHomework', data: { action: 'createBookList', classId: 'class-a', requestId: 'request-5678', books: [{ name: '语文', totalAmount: 10 }] } },
     { name: 'webHomework', data: { action: 'generateTodayPlan', studentId: 'student-a' } },
     { name: 'webHomework', data: { action: 'saveDailyRecord', studentId: 'student-a', homeworkBookId: 'book-a', date: '2026-09-15', actualAmount: 0 } }
   ]);

@@ -14,12 +14,18 @@
 .hw-controls select, .hw-controls input, .hw-controls .adm-btn { min-height: 44px; }
 .hw-book-panel { margin-top: 16px; }
 .hw-book-panel h2 { font-size: 18px; margin-bottom: 14px; }
-.hw-book-form { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 14px; align-items: end; }
+.hw-book-form, .hw-book-items { display: grid; gap: 14px; }
 .hw-book-form label { display: grid; gap: 7px; font-size: 14px; }
 .hw-book-form input, .hw-book-form select, .hw-book-form button { min-height: 44px; }
+.hw-book-target, .hw-book-item-main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 12px; align-items: end; }
+.hw-book-target { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hw-book-item { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.hw-book-item legend { padding: 0 8px; font-weight: 700; }
+.hw-book-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.hw-remove-item { white-space: nowrap; }
 .hw-book-panel > .hw-muted { margin-top: 12px; }
 .hw-book-form [hidden] { display: none; }
-.hw-book-advanced { align-self: end; }
+.hw-book-advanced { margin-top: 10px; }
 .hw-book-advanced > summary { cursor: pointer; color: var(--text-light); min-height: 44px; display: flex; align-items: center; }
 .hw-book-advanced > div { display: grid; gap: 12px; margin-top: 10px; }
 .hw-summary { color: var(--text-light); margin: 20px 0; line-height: 1.7; }
@@ -62,7 +68,7 @@
   .hw-controls { padding: 16px; }
   .hw-controls label { min-width: 0; flex-basis: 100%; }
   .hw-controls button, .hw-controls .adm-btn { width: 100%; justify-content: center; }
-  .hw-book-form { grid-template-columns: 1fr; }
+  .hw-book-target, .hw-book-item-main { grid-template-columns: 1fr; }
   .hw-book-form button { width: 100%; justify-content: center; }
   .adm-topbar { padding: 0 16px; gap: 10px; }
   .hw-student { padding: 16px; }

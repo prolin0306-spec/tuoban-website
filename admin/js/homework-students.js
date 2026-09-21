@@ -67,6 +67,8 @@
       if (!data || !Array.isArray(data.classes) || !Array.isArray(data.students)) throw new Error('学生服务返回无效数据');
       classes = data.classes; students = data.students; renderClassOptions($('classFilter'), true);
       if (requestedClassId && classes.some(cls => cls.id === requestedClassId)) $('classFilter').value = requestedClassId;
+      $('classHomeworkLink').hidden = !$('classFilter').value;
+      if ($('classFilter').value) $('classHomeworkLink').href = `homework.html?classId=${encodeURIComponent($('classFilter').value)}`;
       requestedClassId = ''; render(); message('');
     } catch (error) { if (sequence === generation) failure(error); }
   }

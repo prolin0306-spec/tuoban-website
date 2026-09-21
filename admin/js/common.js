@@ -34,14 +34,18 @@
       { href: 'students.html', icon: 'fa-users', label: '学生管理' },
       { href: 'report-editor.html', icon: 'fa-edit', label: '每日反馈' },
       { href: 'mistakes.html', icon: 'fa-exclamation-triangle', label: '错题管理' },
-      { href: 'homework-classes.html', icon: 'fa-school', label: '作业班级管理' },
-      { href: 'homework-students.html', icon: 'fa-user-graduate', label: '作业学生管理' },
-      { href: 'homework.html', icon: 'fa-book', label: '作业工作台' }
+      { href: 'homework-classes.html', icon: 'fa-school', label: '作业班级管理', children: [
+        { href: 'homework-students.html', icon: 'fa-user-graduate', label: '作业学生管理' },
+        { href: 'homework.html', icon: 'fa-book', label: '作业工作台' }
+      ] }
     ];
-    nav.innerHTML = items.map((item) =>
-      `<a href="${item.href}" class="adm-nav-item${current === item.href ? ' active' : ''}">
+    const classId = new URLSearchParams(window.location.search).get('classId');
+    const link = (item, child = false) =>
+      `<a href="${item.href}${child && classId ? `?classId=${encodeURIComponent(classId)}` : ''}" class="adm-nav-item${child ? ' adm-nav-child' : ''}${current === item.href ? ' active' : ''}">
         <i class="fas ${item.icon}"></i><span>${item.label}</span>
-      </a>`
+      </a>`;
+    nav.innerHTML = items.map(item => item.children ?
+      `<div class="adm-nav-group">${link(item)}<div class="adm-nav-children">${item.children.map(child => link(child, true)).join('')}</div></div>` : link(item)
     ).join('') +
     `<a href="#" class="adm-nav-item adm-nav-logout" id="btnLogout">
       <i class="fas fa-sign-out-alt"></i><span>退出登录</span>

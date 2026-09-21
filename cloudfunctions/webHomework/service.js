@@ -17,6 +17,7 @@ const ACTION_KEYS = Object.freeze({
   setStudentActive: ['action', 'studentId', 'isActive'],
   createBook: ['action', 'studentId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
   createClassBooks: ['action', 'classId', 'requestId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
+  createBookList: ['action', 'classId', 'studentId', 'requestId', 'books'],
   generateTodayPlan: ['action', 'studentId'],
   saveDailyRecord: ['action', 'studentId', 'homeworkBookId', 'date', 'actualAmount']
 });
@@ -362,6 +363,61 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
         createdCount: pending.length, planGenerated: false, repeated: false };
     });
   }
+  async function createBookList(event, auth) {
+    if (typeof event.requestId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(event.requestId)) fail('BAD_REQUEST', '批量请求标识无效');
+    if (!Array.isArray(event.books) || event.books.length < 1 || event.books.length > 20) fail('BAD_REQUEST', '每次须填写 1 至 20 项作业');
+    const books = event.books.map(item => {
+      if (!item || typeof item !== 'object' || Array.isArray(item) ||
+        Object.keys(item).some(key => !['name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'].includes(key))) fail('BAD_REQUEST', '作业项目包含不支持的字段');
+      return { name: text(item.name, '作业名称', 100), subject: text(item.subject, '科目', 32, 'other'),
+        totalAmount: positive(item.totalAmount, '作业数量'),
+        workloadPerUnit: positiveNumber(item.workloadPerUnit, '单位负载', 5), unit: text(item.unit, '单位', 16, '页') };
+    });
+    const createdAt = now();
+    return repo.runTransaction(async transaction => {
+      const cls = await resolveWritableClass(event.classId, auth, transaction);
+      let students;
+      if (event.studentId === undefined) {
+        students = await transaction.list('hw_students', { classId: cls._id, isActive: true });
+        if (!students.length) fail('NO_ACTIVE_STUDENTS', '班级没有启用学生');
+      } else {
+        const student = await resolveStudent(event.studentId, auth, transaction);
+        if (student.classId !== cls._id) fail('FORBIDDEN', '学生不属于所选班级');
+        students = [student];
+      }
+      if (students.length > 100 || students.length * books.length > 300) fail('DATA_LIMIT', '单次最多创建 300 本作业本，请分批录入');
+      const expectedIds = new Set(students.flatMap(student => books.map((_, index) =>
+        stableId('weblistbook', event.requestId, cls._id, student._id, index))));
+      const priorBatch = await transaction.list('hw_homework_books', { batchId: event.requestId });
+      if (priorBatch.length && (priorBatch.length !== expectedIds.size || priorBatch.some(row => !expectedIds.has(row._id)))) {
+        fail('DATA_CHANGED', '批量请求对应的数据已变化，请刷新核对');
+      }
+      const pending = []; let existingCount = 0;
+      for (const student of students) {
+        for (const [index, item] of books.entries()) {
+          const bookId = stableId('weblistbook', event.requestId, cls._id, student._id, index);
+          const book = { studentId: student._id, classId: cls._id, ...item, completedAmount: 0,
+            isActive: true, batchId: event.requestId, createdAt, updatedAt: createdAt };
+          const existing = await transaction.list('hw_homework_books', { _id: bookId });
+          if (existing.length) {
+            const row = existing[0];
+            if (['studentId', 'classId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit', 'batchId']
+              .some(key => row[key] !== book[key]) || row.isActive !== true) fail('DATA_CHANGED', '批量请求对应的数据已变化，请刷新核对');
+            existingCount++; continue;
+          }
+          pending.push({ id: bookId, data: book });
+        }
+      }
+      if (existingCount) {
+        if (pending.length) fail('DATA_CHANGED', '批量请求只完成了部分数据，请联系管理员核对');
+        return { classId: cls._id, studentCount: students.length, bookCount: books.length,
+          createdCount: existingCount, planGenerated: false, repeated: true };
+      }
+      for (const book of pending) await transaction.set('hw_homework_books', book.id, book.data);
+      return { classId: cls._id, studentCount: students.length, bookCount: books.length,
+        createdCount: pending.length, planGenerated: false, repeated: false };
+    });
+  }
   async function generateTodayPlan(event, auth) {
     const date = shanghaiDate(now());
     return repo.runTransaction(async transaction => {
@@ -454,6 +510,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       if (event.action === 'setStudentActive') data = await setStudentActive(event, auth);
       if (event.action === 'createBook') data = await createBook(event, auth);
       if (event.action === 'createClassBooks') data = await createClassBooks(event, auth);
+      if (event.action === 'createBookList') data = await createBookList(event, auth);
       if (event.action === 'generateTodayPlan') data = await generateTodayPlan(event, auth);
       if (event.action === 'saveDailyRecord') data = await saveDailyRecord(event, auth);
       return { code: 'OK', data };
