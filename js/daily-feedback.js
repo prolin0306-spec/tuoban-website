@@ -7,15 +7,17 @@
   let db = null;
   let app = null;
   let dbReady = false;
+  let homeworkApp = null;
+  let homeworkReady = Promise.resolve(false);
 
   const initCloudBase = () => {
-    if (typeof cloudbase === 'undefined') {
+    if (!window.dailyFeedbackLegacyCloudbase) {
       console.error('CloudBase SDK 未加载');
       return;
     }
 
     try {
-      app = cloudbase.init({ env: ENV_ID });
+      app = window.dailyFeedbackLegacyCloudbase.init({ env: ENV_ID });
     } catch (err) {
       console.error('cloudbase.init() 异常:', err);
       return;
@@ -39,6 +41,12 @@
     }).catch((err) => {
       console.error('匿名登录异常:', err);
     });
+    try {
+      if (window.cloudbase && window.cloudbase !== window.dailyFeedbackLegacyCloudbase) {
+        homeworkApp = window.cloudbase.init({ env: ENV_ID, region: 'ap-shanghai' });
+        homeworkReady = homeworkApp.auth.signInAnonymously().then(() => true).catch(() => false);
+      }
+    } catch (_) { homeworkReady = Promise.resolve(false); }
   };
 
   if (document.readyState === 'loading') {
@@ -243,9 +251,10 @@
           .get()
           .then((r) => r.data || []);
 
-        const homeworkP = app.callFunction({ name: 'webParentHomework', data: {
-          action: 'summary', childId: child._id, phone
-        } }).then(response => response.result).catch(() => ({ code: 'DATA_UNAVAILABLE' }));
+        const homeworkP = homeworkReady.then(ready => ready && homeworkApp ? homeworkApp.callFunction({
+          name: 'webParentHomework', data: { action: 'summary', childId: child._id, phone }
+        }).then(response => response.result) : { code: 'DATA_UNAVAILABLE' })
+          .catch(() => ({ code: 'DATA_UNAVAILABLE' }));
 
         return Promise.all([reportsP, mistakesP, homeworkP])
           .then(([reports, mistakes, homework]) => ({ child, reports, mistakes, homework }));

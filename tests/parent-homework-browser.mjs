@@ -20,6 +20,8 @@ const handle = createService({ repo: createRepository(mock.db), identity: async 
 const stub = `window.cloudbase={init(){const auth={currentUser:{uid:'anonymous-test'},signInAnonymously:async()=>({})};
 return{auth:()=>auth,database:()=>({collection(name){return{where(query){return{get:async()=>({data:name==='children'?(${JSON.stringify(data.children)}).filter(row=>row.parentPhone===query.parentPhone):[]}),orderBy(){return this}}}}}}),
 callFunction:async request=>({result:await(await fetch('/__api',{method:'POST',body:JSON.stringify(request.data)})).json()})}}};`;
+const modernStub = `window.cloudbase={init(){return{auth:{signInAnonymously:async()=>({})},
+callFunction:async request=>({result:await(await fetch('/__api',{method:'POST',body:JSON.stringify(request.data)})).json()})}}};`;
 const allowed = new Set(['/daily-feedback.html', '/css/style.css', '/css/daily-feedback.css', '/js/daily-feedback.js']);
 const server = http.createServer(async (req, res) => {
   try {
@@ -29,6 +31,7 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(await handle(JSON.parse(body)))); return;
     }
     if (pathname === '/js/cloudbase.full.min.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(stub); return; }
+    if (pathname === '/js/cloudbase-v3.10.0.full.min.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(modernStub); return; }
     if (!allowed.has(pathname)) { res.writeHead(404); res.end(); return; }
     res.setHeader('Content-Type', pathname.endsWith('.js') ? 'text/javascript' : pathname.endsWith('.css') ? 'text/css' : 'text/html; charset=utf-8');
     res.end(await readFile(join(site, pathname)));
