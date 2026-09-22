@@ -48,6 +48,16 @@ test('wrong phone, wrong child and unrelated students never disclose books', asy
   assert.equal((await handle({ ...request, studentId: 'student-a' })).code, 'BAD_REQUEST');
 });
 
+test('CloudBase transport metadata is ignored and cannot supply parent identity', async () => {
+  const { data, mock, handle } = setup();
+  data.hw_students[0].feedbackChildId = 'feedback-child-a';
+  const result = await handle({ ...request, userInfo: { uid: 'forged' }, tcbContext: {} });
+  assert.equal(result.code, 'OK');
+  assert.equal((await handle({ ...request, tcbContext: 'forged' })).code, 'BAD_REQUEST');
+  const noIdentity = createService({ repo: createRepository(mock.db), identity: async () => null });
+  assert.equal((await noIdentity({ ...request, userInfo: { uid: 'forged' }, tcbContext: {} })).code, 'AUTH_REQUIRED');
+});
+
 test('missing and duplicate mappings fail closed without name matching', async () => {
   const { data, handle } = setup();
   assert.deepEqual((await handle(request)).data.books, []);

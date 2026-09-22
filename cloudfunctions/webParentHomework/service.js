@@ -8,7 +8,9 @@ const shanghaiToday = date => new Intl.DateTimeFormat('en-CA', {
 function createService({ repo, identity, now = () => new Date() }) {
   return async event => {
     if (!event || typeof event !== 'object' || Array.isArray(event) ||
-        Object.keys(event).some(key => !['action', 'childId', 'phone'].includes(key)) || event.action !== 'summary') {
+        Object.keys(event).some(key => !['action', 'childId', 'phone', 'userInfo', 'tcbContext'].includes(key)) ||
+        (Object.hasOwn(event, 'tcbContext') && (!event.tcbContext || typeof event.tcbContext !== 'object' || Array.isArray(event.tcbContext))) ||
+        event.action !== 'summary') {
       return { code: 'BAD_REQUEST', message: '不支持的请求' };
     }
     if (typeof event.childId !== 'string' || !event.childId || event.childId.length > 128 ||
