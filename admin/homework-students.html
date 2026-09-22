@@ -91,6 +91,20 @@
     </form>
   </dialog>
 
+  <dialog id="feedbackLinkDialog" class="sm-dialog">
+    <form id="feedbackLinkForm" class="sm-form">
+      <div class="sm-dialog-heading"><h2>关联家长每日反馈</h2><button id="closeFeedbackLinkButton" class="sm-close" type="button" aria-label="关闭">×</button></div>
+      <p class="sm-warning">请先输入家长手机号，再逐人核对姓名、班级和手机号尾号。两套系统的班级名称可能不同，不会按姓名自动关联。</p>
+      <input id="linkStudentId" type="hidden">
+      <p id="linkStudentName"></p>
+      <label for="feedbackPhone">家长手机号<input id="feedbackPhone" class="adm-form-input" type="tel" inputmode="numeric" autocomplete="off" maxlength="11" required pattern="1[0-9]{10}"></label>
+      <button id="findFeedbackChildButton" class="adm-btn adm-btn-secondary" type="button">查找每日反馈学生</button>
+      <p id="feedbackLookupStatus" role="status" aria-live="polite"></p>
+      <label for="feedbackChildSelect">每日反馈中的孩子<select id="feedbackChildSelect" class="adm-form-select" required></select></label>
+      <div class="sm-dialog-actions"><button id="cancelFeedbackLinkButton" class="adm-btn adm-btn-secondary" type="button">取消</button><button id="saveFeedbackLinkButton" class="adm-btn adm-btn-primary" type="submit">确认关联</button></div>
+    </form>
+  </dialog>
+
   <script src="../js/cloudbase-v3.10.0.full.min.js"></script>
   <script src="js/homework-config.js"></script>
   <script src="js/homework-api.js"></script>

@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id);
   const api = window.createHomeworkAPI(window.HOMEWORK_CONFIG, window.cloudbase);
   const speedNames = { slow: '偏慢', normal: '正常', fast: '偏快' };
-  let active = false, generation = 0, classes = [], students = [], editing = null;
+  let active = false, generation = 0, lookupSequence = 0, classes = [], students = [], editing = null, feedbackChildren = [];
   let requestedClassId = new URLSearchParams(window.location.search).get('classId') || '';
 
   function element(tag, text, className) {
@@ -24,7 +24,7 @@
     const authError = error.code === 'AUTH_REQUIRED';
     $('loginPanel').hidden = !authError; $('retryButton').hidden = authError;
     if (authError || ['TEACHER_DISABLED', 'TEACHER_UNLINKED', 'FORBIDDEN'].includes(error.code)) {
-      active = false; $('studentPanel').hidden = true; $('topbarInfo').textContent = '';
+      active = false; feedbackChildren = []; $('studentPanel').hidden = true; $('topbarInfo').textContent = '';
     }
   }
   function renderClassOptions(select, includeAll) {
@@ -48,12 +48,18 @@
       card.append(metadata('班级', student.className || '未命名班级'));
       card.append(metadata('速度', `${speedNames[student.speedLevel] || '正常'}（${student.speedCoefficient}）`));
       card.append(metadata('作业本', `${student.bookCount} 本`));
+      const linkedChild = feedbackChildren.find(child => child.id === student.feedbackChildId);
+      card.append(metadata('家长反馈', student.feedbackChildId ? (linkedChild ? `已关联：${linkedChild.name}` : '已关联') : '未关联'));
       const state = element('span', student.isActive ? '已启用' : '已停用', 'sm-state'); state.dataset.active = String(student.isActive); card.append(state);
       const actions = element('div', undefined, 'sm-actions');
       const edit = element('button', '编辑', 'adm-btn adm-btn-secondary adm-btn-sm'); edit.type = 'button';
       edit.addEventListener('click', () => openForm(student)); actions.append(edit);
       const toggle = element('button', student.isActive ? '停用' : '重新启用', `adm-btn adm-btn-secondary adm-btn-sm${student.isActive ? ' sm-danger' : ''}`);
       toggle.type = 'button'; toggle.addEventListener('click', () => toggleActive(student, toggle)); actions.append(toggle); card.append(actions);
+      const link = element('button', student.feedbackChildId ? '解除反馈关联' : '关联家长反馈', 'adm-btn adm-btn-secondary adm-btn-sm');
+      link.type = 'button';
+      link.addEventListener('click', () => student.feedbackChildId ? unlinkFeedbackChild(student, link) : openFeedbackLink(student));
+      actions.append(link);
       $('studentList').append(card);
     }
   }
@@ -73,7 +79,7 @@
     } catch (error) { if (sequence === generation) failure(error); }
   }
   async function start() {
-    const sequence = ++generation; clearStudents(); message('正在验证作业访问权限…');
+    const sequence = ++generation; clearStudents(); feedbackChildren = []; message('正在验证作业访问权限…');
     $('retryButton').hidden = true; $('studentPanel').hidden = true;
     try {
       const session = await api.session();
@@ -98,6 +104,61 @@
     $('studentDialog').showModal();
   }
   function closeForm() { editing = null; $('studentDialog').close(); }
+  function openFeedbackLink(student) {
+    ++lookupSequence; feedbackChildren = []; $('feedbackPhone').value = '';
+    $('feedbackLookupStatus').textContent = '输入家长手机号后查找，并核对要关联的孩子。';
+    $('feedbackChildSelect').replaceChildren(); $('saveFeedbackLinkButton').disabled = true;
+    $('linkStudentId').value = student.id;
+    $('linkStudentName').textContent = `作业学生：${student.name} · ${student.className}`;
+    $('feedbackLinkDialog').showModal();
+  }
+  async function findFeedbackChild() {
+    const phone = $('feedbackPhone').value.trim();
+    if (!/^1\d{10}$/.test(phone)) { $('feedbackLookupStatus').textContent = '请输入正确的 11 位家长手机号'; return; }
+    const sequence = ++lookupSequence, button = $('findFeedbackChildButton');
+    button.disabled = true; $('feedbackChildSelect').replaceChildren(); $('saveFeedbackLinkButton').disabled = true;
+    $('feedbackLookupStatus').textContent = '正在查找…';
+    try {
+      const rows = await api.feedbackChildren(phone);
+      if (sequence !== lookupSequence || !$('feedbackLinkDialog').open) return;
+      feedbackChildren = Array.isArray(rows) ? rows : [];
+      const used = new Set(students.map(row => row.feedbackChildId).filter(Boolean));
+      const available = feedbackChildren.filter(row => !used.has(row.id));
+      if (!available.length) { $('feedbackLookupStatus').textContent = '未找到可关联的每日反馈学生，请核对手机号或现有关联'; return; }
+      const select = $('feedbackChildSelect');
+      const blank = element('option', '请选择并核对每日反馈学生'); blank.value = ''; select.append(blank);
+      for (const child of available) {
+        const option = element('option', `${child.name} · ${child.className || '班级未填写'} · 手机尾号 ${child.phoneSuffix || '未知'}`);
+        option.value = child.id; select.append(option);
+      }
+      $('feedbackLookupStatus').textContent = `找到 ${available.length} 位孩子，请核对姓名后选择。`;
+      $('saveFeedbackLinkButton').disabled = false;
+    } catch (error) { if (sequence === lookupSequence) $('feedbackLookupStatus').textContent = error.message || '查找失败，请重试'; }
+    finally { if (sequence === lookupSequence) button.disabled = false; }
+  }
+  async function saveFeedbackLink(event) {
+    event.preventDefault();
+    const student = students.find(row => row.id === $('linkStudentId').value);
+    const child = feedbackChildren.find(row => row.id === $('feedbackChildSelect').value);
+    const phone = $('feedbackPhone').value.trim();
+    if (!student || !child || !/^1\d{10}$/.test(phone) || child.phoneSuffix !== phone.slice(-4)) {
+      $('feedbackLookupStatus').textContent = '请重新查找并选择有效的学生关联'; return;
+    }
+    if (!window.confirm(`请再次核对：将作业学生“${student.name} · ${student.className}”关联到家长反馈“${child.name} · ${child.className} · 手机尾号 ${child.phoneSuffix}”？`)) return;
+    const button = $('saveFeedbackLinkButton'); button.disabled = true;
+    try {
+      await api.linkFeedbackChild({ studentId: student.id, childId: child.id, phone });
+      $('feedbackLinkDialog').close(); await loadStudents(); message('家长反馈学生关联已保存');
+    } catch (error) { message(error.message || '关联失败，请重试', 'error'); }
+    finally { button.disabled = false; }
+  }
+  async function unlinkFeedbackChild(student, button) {
+    if (!window.confirm(`确认解除“${student.name}”与家长每日反馈的关联？家长将暂时无法查看该学生的作业情况，历史作业不会删除。`)) return;
+    button.disabled = true;
+    try { await api.unlinkFeedbackChild({ studentId: student.id, childId: student.feedbackChildId }); await loadStudents(); message('家长反馈关联已解除，历史作业保持不变'); }
+    catch (error) { message(error.message || '解除关联失败，请重试', 'error'); }
+    finally { button.disabled = false; }
+  }
   async function saveStudent(event) {
     event.preventDefault();
     const name = $('studentName').value.trim(), grade = $('studentGrade').value.trim();
@@ -125,7 +186,7 @@
   }
 
   window.homeworkLogout = async () => {
-    ++generation; active = false; clearStudents(); $('studentPanel').hidden = true; $('topbarInfo').textContent = '';
+    ++generation; active = false; clearStudents(); feedbackChildren = []; $('studentPanel').hidden = true; $('topbarInfo').textContent = '';
     try { await api.logout(); $('loginPanel').hidden = false; $('retryButton').hidden = true; message('作业账号已退出'); }
     catch (error) { message(error.message, 'error'); }
   };
@@ -136,6 +197,11 @@
     finally { $('homeworkPassword').value = ''; button.disabled = false; }
   });
   $('studentForm').addEventListener('submit', saveStudent);
+  $('feedbackLinkForm').addEventListener('submit', saveFeedbackLink);
+  $('findFeedbackChildButton').addEventListener('click', findFeedbackChild);
+  $('feedbackPhone').addEventListener('input', () => { ++lookupSequence; feedbackChildren = []; $('feedbackChildSelect').replaceChildren(); $('saveFeedbackLinkButton').disabled = true; $('feedbackLookupStatus').textContent = '手机号已更改，请重新查找'; });
+  $('cancelFeedbackLinkButton').addEventListener('click', () => $('feedbackLinkDialog').close());
+  $('closeFeedbackLinkButton').addEventListener('click', () => $('feedbackLinkDialog').close());
   $('addButton').addEventListener('click', () => openForm(null));
   $('cancelButton').addEventListener('click', closeForm); $('closeDialogButton').addEventListener('click', closeForm);
   $('searchButton').addEventListener('click', loadStudents); $('refreshButton').addEventListener('click', loadStudents);

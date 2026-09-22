@@ -38,6 +38,9 @@ test('function and actions are fixed; no teacher identity or collection forwarde
   await a.createStudent({ name: '学生', grade: '二年级', classId: 'class-a' });
   await a.updateStudent({ studentId: 'student-a', name: '新姓名' });
   await a.setStudentActive('student-a', false);
+  await a.feedbackChildren('13800000001');
+  await a.linkFeedbackChild({ studentId: 'student-a', childId: 'feedback-child-a', phone: '13800000001' });
+  await a.unlinkFeedbackChild({ studentId: 'student-a', childId: 'feedback-child-a' });
   await a.createBook({ studentId: 'student-a', name: '练习册', totalAmount: 10 });
   await a.createClassBooks({ classId: 'class-a', requestId: 'request-1234', name: '全班练习', totalAmount: 10 });
   await a.createBookList({ classId: 'class-a', requestId: 'request-5678', books: [{ name: '语文', totalAmount: 10 }] });
@@ -56,6 +59,9 @@ test('function and actions are fixed; no teacher identity or collection forwarde
     { name: 'webHomework', data: { action: 'createStudent', name: '学生', grade: '二年级', classId: 'class-a' } },
     { name: 'webHomework', data: { action: 'updateStudent', studentId: 'student-a', name: '新姓名' } },
     { name: 'webHomework', data: { action: 'setStudentActive', studentId: 'student-a', isActive: false } },
+    { name: 'webHomework', data: { action: 'feedbackChildren', phone: '13800000001' } },
+    { name: 'webHomework', data: { action: 'linkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-a', phone: '13800000001' } },
+    { name: 'webHomework', data: { action: 'unlinkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-a' } },
     { name: 'webHomework', data: { action: 'createBook', studentId: 'student-a', name: '练习册', totalAmount: 10 } },
     { name: 'webHomework', data: { action: 'createClassBooks', classId: 'class-a', requestId: 'request-1234', name: '全班练习', totalAmount: 10 } },
     { name: 'webHomework', data: { action: 'createBookList', classId: 'class-a', requestId: 'request-5678', books: [{ name: '语文', totalAmount: 10 }] } },

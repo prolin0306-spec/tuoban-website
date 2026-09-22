@@ -1,5 +1,14 @@
 /* ========== 每日反馈 - 页面级样式 ========== */
 
+.df-homework-section { background: #f8fafc; }
+.df-homework-caption { color: #64748b; margin: 0 0 20px; font-size: 14px; }
+.df-homework-list { display: grid; gap: 12px; }
+.df-homework-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; }
+.df-homework-card h3 { margin: 0 0 8px; font-size: 17px; }
+.df-homework-card p { margin: 5px 0; color: #475569; }
+.df-homework-card .df-homework-done { color: #15803d; font-weight: 700; }
+.df-homework-card .df-homework-pending { color: #b45309; font-weight: 700; }
+
 /* 页面通用 */
 .df-page {
   background: var(--bg);

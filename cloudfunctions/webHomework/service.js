@@ -15,6 +15,9 @@ const ACTION_KEYS = Object.freeze({
   createStudent: ['action', 'name', 'grade', 'classId', 'speedLevel'],
   updateStudent: ['action', 'studentId', 'name', 'grade', 'classId', 'speedLevel'],
   setStudentActive: ['action', 'studentId', 'isActive'],
+  feedbackChildren: ['action', 'phone'],
+  linkFeedbackChild: ['action', 'studentId', 'childId', 'phone'],
+  unlinkFeedbackChild: ['action', 'studentId', 'childId'],
   createBook: ['action', 'studentId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
   createClassBooks: ['action', 'classId', 'requestId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
   createBookList: ['action', 'classId', 'studentId', 'requestId', 'books'],
@@ -195,7 +198,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
         rows.push({ id: student._id, name: student.name || '', grade: student.grade || '',
           classId: student.classId, className: cls.name || '', speedLevel: hasCompleteSpeed ? student.speedLevel : 'normal',
           speedCoefficient: hasCompleteSpeed ? student.speedCoefficient : SPEED_MAP.normal,
-          isActive: student.isActive === true, bookCount: books.length,
+          isActive: student.isActive === true, feedbackChildId: student.feedbackChildId || null, bookCount: books.length,
           hasCurrentOrFuturePlan: plans.some(plan => validDate(plan.date) && plan.date >= today) });
       }
     }
@@ -249,6 +252,40 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       const update = { isActive: event.isActive, updatedAt: now(), operatorTeacherId: auth.teacher._id };
       await transaction.update('hw_students', student._id, update);
       return { id: student._id, isActive: event.isActive, historyPreserved: true };
+    });
+  }
+  async function feedbackChildren(event) {
+    if (typeof event.phone !== 'string' || !/^1\d{10}$/.test(event.phone)) fail('BAD_REQUEST', '家长手机号无效');
+    const rows = await repo.list('children', { parentPhone: Number(event.phone) });
+    return rows.filter(child => String(child.parentPhone) === event.phone).map(child => ({ id: child._id, name: child.name || '', className: child.class || '',
+      phoneSuffix: /^1\d{10}$/.test(String(child.parentPhone || '')) ? String(child.parentPhone).slice(-4) : '' }));
+  }
+  async function linkFeedbackChild(event, auth) {
+    if (!id(event.childId)) fail('BAD_REQUEST', '每日反馈学生无效');
+    if (typeof event.phone !== 'string' || !/^1\d{10}$/.test(event.phone)) fail('BAD_REQUEST', '家长手机号无效');
+    return repo.runTransaction(async transaction => {
+      const student = await resolveManagedStudent(event.studentId, auth, transaction);
+      const children = await transaction.list('children', { _id: event.childId });
+      if (children.length !== 1 || String(children[0].parentPhone) !== event.phone) {
+        fail('NOT_FOUND', '每日反馈学生不存在或未配置家长手机号');
+      }
+      const linked = (await transaction.list('hw_students')).filter(row => row.feedbackChildId === event.childId);
+      if (linked.some(row => row._id !== student._id)) fail('DATA_CHANGED', '该每日反馈学生已关联其他作业学生');
+      if (student.feedbackChildId === event.childId) return { studentId: student._id, childId: event.childId, unchanged: true };
+      if (student.feedbackChildId) fail('DATA_CHANGED', '该作业学生已有反馈关联，请先核对');
+      await transaction.update('hw_students', student._id, { feedbackChildId: event.childId,
+        updatedAt: now(), operatorTeacherId: auth.teacher._id });
+      return { studentId: student._id, childId: event.childId, unchanged: false };
+    });
+  }
+  async function unlinkFeedbackChild(event, auth) {
+    if (!id(event.childId)) fail('BAD_REQUEST', '每日反馈学生无效');
+    return repo.runTransaction(async transaction => {
+      const student = await resolveManagedStudent(event.studentId, auth, transaction);
+      if (student.feedbackChildId !== event.childId) fail('DATA_CHANGED', '关联已变化，请刷新后重试');
+      await transaction.update('hw_students', student._id, { feedbackChildId: null,
+        updatedAt: now(), operatorTeacherId: auth.teacher._id });
+      return { studentId: student._id, childId: event.childId, unlinked: true };
     });
   }
   async function workspace(classId, date, auth) {
@@ -547,6 +584,9 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       if (event.action === 'createStudent') data = await createStudent(event, auth);
       if (event.action === 'updateStudent') data = await updateStudent(event, auth);
       if (event.action === 'setStudentActive') data = await setStudentActive(event, auth);
+      if (event.action === 'feedbackChildren') data = await feedbackChildren(event);
+      if (event.action === 'linkFeedbackChild') data = await linkFeedbackChild(event, auth);
+      if (event.action === 'unlinkFeedbackChild') data = await unlinkFeedbackChild(event, auth);
       if (event.action === 'createBook') data = await createBook(event, auth);
       if (event.action === 'createClassBooks') data = await createClassBooks(event, auth);
       if (event.action === 'createBookList') data = await createBookList(event, auth);

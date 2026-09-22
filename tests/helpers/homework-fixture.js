@@ -9,6 +9,8 @@ function fixture() {
       { _id: 'class-c', name: '不可访问班级', grade: '测试年级', teacherIds: [], isActive: true }],
     hw_students: [{ _id: 'student-a', name: '虚构学生甲', grade: '测试年级', classId: 'class-a', speedLevel: 'normal', speedCoefficient: 0.8, isActive: true },
       { _id: 'student-b', name: '虚构学生乙', grade: '测试年级', classId: 'class-a', speedLevel: 'normal', speedCoefficient: 1, isActive: true }],
+    children: [{ _id: 'feedback-child-a', name: '虚构学生甲', class: '测试甲班', parentPhone: 13800000001 },
+      { _id: 'feedback-child-b', name: '虚构学生乙', class: '测试甲班', parentPhone: 13800000002 }],
     hw_homework_books: ['a', 'b', 'c', 'd'].map((v, i) => ({ _id: 'book-' + v, studentId: i === 3 ? 'student-b' : 'student-a', classId: 'class-a', name: '测试作业' + v,
       unit: i === 1 ? '题' : '页', workloadPerUnit: i === 1 ? 5 : 2, totalAmount: 100,
       completedAmount: v === 'a' ? 2 : v === 'd' ? 1 : 0, isActive: true })),

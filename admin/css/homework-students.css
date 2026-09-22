@@ -8,7 +8,7 @@
 .sm-controls button, .sm-controls .adm-btn { min-height: 42px; }
 .sm-summary { margin: 18px 0 12px; }
 .sm-list { display: grid; gap: 12px; }
-.sm-student { display: grid; grid-template-columns: minmax(150px, 1.2fr) repeat(4, minmax(100px, .8fr)) auto; gap: 14px; align-items: center; }
+.sm-student { display: grid; grid-template-columns: minmax(150px, 1.2fr) repeat(5, minmax(100px, .8fr)) auto; gap: 14px; align-items: center; }
 .sm-name { font-weight: 700; font-size: 17px; overflow-wrap: anywhere; }
 .sm-meta { display: grid; gap: 3px; min-width: 0; }
 .sm-meta dt { color: var(--text-light); font-size: 12px; }

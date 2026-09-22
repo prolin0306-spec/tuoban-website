@@ -96,6 +96,19 @@ try {
     assert.ok(links.includes('homework-classes.html'));
     assert.equal(links.indexOf('homework.html?classId=class-a') - links.indexOf('homework-students.html?classId=class-a'), 1);
   });
+  await check('teacher explicitly links and unlinks the daily-feedback child', async () => {
+    await evaluate('document.querySelector(`.sm-student[data-student-id="student-a"] .sm-actions button:last-child`).click()');
+    await until('document.getElementById("feedbackLinkDialog").open');
+    await evaluate(`document.getElementById('feedbackPhone').value='13800000001';document.getElementById('feedbackPhone').dispatchEvent(new Event('input'));document.getElementById('findFeedbackChildButton').click()`);
+    await until('document.getElementById("feedbackChildSelect").options.length>1');
+    assert.ok((await evaluate('document.getElementById("feedbackChildSelect").innerText')).includes('手机尾号 0001'));
+    await evaluate(`(()=>{document.getElementById('feedbackChildSelect').value='feedback-child-a';document.getElementById('feedbackLinkForm').requestSubmit()})()`);
+    await until('document.body.innerText.includes("家长反馈学生关联已保存")');
+    assert.equal(data.hw_students.find(row => row._id === 'student-a').feedbackChildId, 'feedback-child-a');
+    await evaluate('document.querySelector(`.sm-student[data-student-id="student-a"] .sm-actions button:last-child`).click()');
+    await until('document.body.innerText.includes("家长反馈关联已解除")');
+    assert.equal(data.hw_students.find(row => row._id === 'student-a').feedbackChildId, null);
+  });
   await check('class filter and name search only show matching students', async () => {
     await evaluate('document.getElementById("classFilter").value="class-b";document.getElementById("classFilter").dispatchEvent(new Event("change"))');
     await until('document.body.innerText.includes("没有符合条件的学生")');

@@ -448,6 +448,50 @@ test('students lists only authorized classes with server-side class and name fil
   assert.equal(s.mock.writes, 0);
 });
 
+test('teacher explicitly links a homework student to one daily-feedback child', async () => {
+  const s = setup(), list = await s.handle({ action: 'feedbackChildren', phone: '13800000001' });
+  assert.equal(list.code, 'OK'); assert.equal(list.data.length, 1);
+  assert.equal(list.data[0].parentPhone, undefined);
+  assert.equal(list.data[0].phoneSuffix, '0001');
+  const event = { action: 'linkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-a', phone: '13800000001' };
+  assert.equal((await s.handle(event)).code, 'OK');
+  assert.equal(s.data.hw_students[0].feedbackChildId, 'feedback-child-a');
+  assert.equal((await s.handle(event)).data.unchanged, true);
+  const students = await s.handle({ action: 'students', classId: 'class-a' });
+  assert.equal(students.data.students.find(row => row.id === 'student-a').feedbackChildId, 'feedback-child-a');
+  assert.equal((await s.handle({ action: 'linkFeedbackChild', studentId: 'student-b', childId: 'feedback-child-a', phone: '13800000001' })).code, 'DATA_CHANGED');
+  assert.equal((await s.handle({ action: 'linkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-b', phone: '13800000002' })).code, 'DATA_CHANGED');
+  assert.equal((await s.handle({ action: 'unlinkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-a' })).code, 'OK');
+  assert.equal(s.data.hw_students[0].feedbackChildId, null);
+});
+
+test('feedback links refuse unauthorized students and roll back on storage failure', async () => {
+  const d = fixture(); d.hw_students.push({ _id: 'student-c', classId: 'class-c', isActive: true });
+  const s = setup(d), event = { action: 'linkFeedbackChild', studentId: 'student-c', childId: 'feedback-child-a', phone: '13800000001' };
+  assert.equal((await s.handle(event)).code, 'FORBIDDEN');
+  assert.equal((await s.handle({ ...event, studentId: 'student-a', childId: 'missing' })).code, 'NOT_FOUND');
+  assert.equal((await s.handle({ ...event, studentId: 'student-a', role: 'boss' })).code, 'BAD_REQUEST');
+  assert.equal((await s.handle({ action: 'unlinkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-a' })).code, 'DATA_CHANGED');
+  s.mock.failWrite = ({ collection }) => collection === 'hw_students';
+  const before = structuredClone(d);
+  assert.equal((await s.handle({ ...event, studentId: 'student-a' })).code, 'UNAVAILABLE');
+  assert.deepEqual(d, before);
+});
+
+test('feedback child lookup needs an exact phone and links need authorized student scope', async () => {
+  const d = fixture();
+  d.children.push({ _id: 'feedback-child-c', name: '其他班孩子', class: '不可访问班级', parentPhone: 13800000003 });
+  const s = setup(d);
+  assert.equal((await s.handle({ action: 'feedbackChildren' })).code, 'BAD_REQUEST');
+  const list = await s.handle({ action: 'feedbackChildren', phone: '13800000001' });
+  assert.equal(list.code, 'OK');
+  assert.equal(list.data.some(row => row.id === 'feedback-child-c'), false);
+  assert.equal((await s.handle({ action: 'linkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-c', phone: '13800000001' })).code, 'NOT_FOUND');
+  assert.equal((await s.handle({ action: 'linkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-c', phone: '13800000003' })).code, 'OK');
+  assert.equal(d.hw_students[0].feedbackChildId, 'feedback-child-c');
+  assert.equal((await s.handle({ action: 'linkFeedbackChild', studentId: 'student-a', childId: 'feedback-child-a' })).code, 'BAD_REQUEST');
+});
+
 test('createStudent uses mini-program speed defaults and audit fields', async () => {
   const d = fixture(), s = setup(d);
   let result = await s.handle({ action: 'createStudent', name: '  新学生  ', grade: ' 二年级 ', classId: 'class-a' });

@@ -1,0 +1,15 @@
+{
+  "envId": "tuoban-booking-d6g862sk51b7dbb40",
+  "functionRoot": "./cloudfunctions",
+  "functions": [
+    {
+      "name": "webParentHomework",
+      "timeout": 60,
+      "runtime": "Nodejs18.15",
+      "memorySize": 256,
+      "envVariables": {
+        "WEB_PARENT_HOMEWORK_ENV_ID": "tuoban-booking-d6g862sk51b7dbb40"
+      }
+    }
+  ]
+}
