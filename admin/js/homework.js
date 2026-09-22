@@ -105,10 +105,35 @@
     });
     label.append(checkbox, element('span', checkbox.checked ? '已完成' : '完成')); return label;
   }
+  function registeredBookRow(student, book, date, today) {
+    const row = element('li', undefined, 'hw-registered-item'); row.dataset.registeredBookId = book.id;
+    const main = element('div', undefined, 'hw-registered-main');
+    const description = element('div');
+    description.append(element('strong', book.name || '作业本信息缺失'));
+    description.append(element('span', `数量：${finite(book.totalAmount) ? book.totalAmount : '待核对'} ${book.unit || ''} · 已完成：${finite(book.completedAmount) ? book.completedAmount : '待核对'} ${book.unit || ''}`, 'hw-muted'));
+    main.append(description);
+    if (book.canCompleteWhole) {
+      const label = element('label', undefined, 'hw-complete-toggle');
+      const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = book.isCompleted === true;
+      checkbox.dataset.bookCompletionToggle = book.id; checkbox.disabled = date !== today;
+      checkbox.addEventListener('change', async () => {
+        const checked = checkbox.checked; checkbox.disabled = true; message('正在保存整项作业完成状态…');
+        try {
+          await api.setBookComplete({ studentId: student.id, homeworkBookId: book.id, isCompleted: checked });
+          await loadWorkspace(); message(`${student.name || '该学生'} · ${book.name} 已标记为${checked ? '整项完成' : '未完成'}`);
+        } catch (error) { checkbox.checked = !checked; checkbox.disabled = date !== today; message(error.message || '保存失败，请重试', 'error'); }
+      });
+      label.append(checkbox, element('span', checkbox.checked ? '整项已完成' : '整项完成')); main.append(label);
+    }
+    row.append(main);
+    if (!book.canCompleteWhole) row.append(element('p', book.hasPlanOrRecord ? '已有计划或记录：请按对应日期的计划登记完成量' : '已有部分完成量，请先核对数据', 'hw-muted'));
+    if (book.canCompleteWhole && date !== today) row.append(element('p', '切换到今天可勾选整项完成', 'hw-muted'));
+    return row;
+  }
   function render(data) {
     if (!data || !Array.isArray(data.students) || !data.summary) throw new Error('作业服务返回无效数据');
     $('studentCards').replaceChildren(); $('bookStudent').replaceChildren();
-    $('homeworkSummary').textContent = `${data.className || '未命名班级'} · ${data.date} · ${data.students.length} 位学生 · ` +
+    $('homeworkSummary').textContent = `${data.className || '未命名班级'} · ${data.date} · ${data.students.length} 位学生 · ${data.summary.registeredBookCount || 0} 本已登记作业 · ` +
       `${data.summary.taskCount} 项任务 · ${data.summary.recordedTaskCount} 项有实际记录 · 全班计划进度 ${data.summary.overallProgress}%。` +
       '按红、黄、绿及优先级降序排列。';
     for (const student of data.students) {
@@ -131,6 +156,13 @@
       if (!finite(rate)) metrics.append(element('p', student.projection && student.projection.reason || '预测信息不足', 'hw-muted'));
       for (const alert of student.projection && student.projection.alerts || []) metrics.append(element('p', alert.message, 'hw-alert'));
       card.append(metrics);
+      const registered = element('section', undefined, 'hw-registered');
+      registered.append(element('h3', `已登记作业（${(student.registeredBooks || []).length}）`));
+      registered.append(element('p', '整项勾选只更新作业本完成量，不生成每日计划或记录。', 'hw-muted'));
+      const registeredList = element('ul');
+      for (const book of student.registeredBooks || []) registeredList.append(registeredBookRow(student, book, data.date, data.today));
+      if (!registeredList.children.length) registeredList.append(element('li', '尚未登记作业', 'hw-muted'));
+      registered.append(registeredList); card.append(registered);
       if (!student.hasPlan) {
         card.append(element('p', '尚未生成计划', 'hw-notice'));
         if (data.date === data.today) {
@@ -140,6 +172,7 @@
           card.append(generate);
         }
       }
+      if (student.tasks.length) card.append(element('h3', '今日计划', 'hw-today-heading'));
       const tasks = element('ul', undefined, 'hw-tasks');
       for (const task of student.tasks) {
         const row = element('li', undefined, 'hw-task'); row.dataset.bookId = task.homeworkBookId || '';

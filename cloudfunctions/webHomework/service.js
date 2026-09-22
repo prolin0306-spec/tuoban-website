@@ -18,6 +18,7 @@ const ACTION_KEYS = Object.freeze({
   createBook: ['action', 'studentId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
   createClassBooks: ['action', 'classId', 'requestId', 'name', 'subject', 'totalAmount', 'workloadPerUnit', 'unit'],
   createBookList: ['action', 'classId', 'studentId', 'requestId', 'books'],
+  setBookComplete: ['action', 'studentId', 'homeworkBookId', 'isCompleted'],
   generateTodayPlan: ['action', 'studentId'],
   saveDailyRecord: ['action', 'studentId', 'homeworkBookId', 'date', 'actualAmount']
 });
@@ -258,12 +259,25 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
     const cards = [];
     let totalPlannedWorkload = 0, totalCompletedWorkload = 0;
     for (const student of students) {
-      const [books, plans, records] = await Promise.all([
+      const [books, allPlans, allRecords] = await Promise.all([
         repo.list('hw_homework_books', { studentId: student._id }),
-        repo.list('hw_daily_plans', { studentId: student._id, date }),
-        repo.list('hw_daily_records', { studentId: student._id, date })
+        repo.list('hw_daily_plans', { studentId: student._id }),
+        repo.list('hw_daily_records', { studentId: student._id })
       ]);
+      const plans = allPlans.filter(plan => plan.date === date);
+      const records = allRecords.filter(record => record.date === date);
       const bookMap = new Map(books.map(book => [book._id, book]));
+      const protectedBooks = new Set([...allPlans, ...allRecords].map(row => row.homeworkBookId));
+      const registeredBooks = books.filter(book => book.isActive === true).map(book => {
+        const total = numeric(book.totalAmount) && book.totalAmount > 0 ? book.totalAmount : null;
+        const completed = numeric(book.completedAmount) && book.completedAmount >= 0 ? book.completedAmount : null;
+        const valid = total !== null && completed !== null && completed <= total;
+        return { id: book._id, name: book.name || '作业本信息缺失', unit: book.unit || '',
+          totalAmount: total, completedAmount: completed,
+          isCompleted: valid && completed === total,
+          canCompleteWhole: valid && (completed === 0 || completed === total) && !protectedBooks.has(book._id),
+          hasPlanOrRecord: protectedBooks.has(book._id) };
+      });
       const keys = [...new Set([...plans, ...records].map(row => row.homeworkBookId))];
       const tasks = keys.map(bookId => {
         const book = bookMap.get(bookId);
@@ -300,13 +314,14 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       const actualRateReason = !plans.length ? '尚未生成计划' : !records.length ? '未记录' :
         tasks.some(task => task.hasPlan && task.status === 'unrecorded') ? '部分任务未记录，无法计算完整完成率' : '计划、实际记录或单位负载不足，无法计算';
       cards.push({ id: student._id, name: student.name || '', grade: student.grade || '',
-        speedLevel: student.speedLevel || '', tasks, hasPlan: plans.length > 0, completionRate,
+        speedLevel: student.speedLevel || '', tasks, registeredBooks, hasPlan: plans.length > 0, completionRate,
         actualRate, actualRateReason: actualRate === null ? actualRateReason : null,
         projection, priorityScore: projection.priorityScore });
     }
     cards.sort(compareStudents);
     return { date, today: shanghaiDate(now()), classId, className: cls.name || '', students: cards,
-      summary: { studentCount: cards.length, taskCount: cards.reduce((count, card) => count + card.tasks.length, 0),
+      summary: { studentCount: cards.length, registeredBookCount: cards.reduce((count, card) => count + card.registeredBooks.length, 0),
+        taskCount: cards.reduce((count, card) => count + card.tasks.length, 0),
         recordedTaskCount: cards.reduce((count, card) => count + card.tasks.filter(task => task.actual !== null).length, 0),
         overallProgress: totalPlannedWorkload > 0 ? Math.round(totalCompletedWorkload / totalPlannedWorkload * 100) : 0 } };
   }
@@ -418,6 +433,30 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
         createdCount: pending.length, planGenerated: false, repeated: false };
     });
   }
+  async function setBookComplete(event, auth) {
+    if (typeof event.isCompleted !== 'boolean' || !id(event.homeworkBookId)) fail('BAD_REQUEST', '作业完成状态无效');
+    return repo.runTransaction(async transaction => {
+      const student = await resolveStudent(event.studentId, auth, transaction);
+      const rows = await transaction.list('hw_homework_books', { _id: event.homeworkBookId });
+      if (rows.length !== 1 || rows[0].studentId !== student._id || rows[0].classId !== student.classId || rows[0].isActive !== true) {
+        fail('FORBIDDEN', '作业不属于该学生或已停用');
+      }
+      const book = rows[0];
+      const totalAmount = Number(book.totalAmount), completedAmount = Number(book.completedAmount);
+      if (!Number.isInteger(totalAmount) || totalAmount <= 0 || !Number.isFinite(completedAmount) ||
+          completedAmount < 0 || completedAmount > totalAmount) fail('DATA_INVALID', '作业总量或已完成量异常，请先核对数据');
+      const [plans, records] = await Promise.all([
+        transaction.list('hw_daily_plans', { studentId: student._id, homeworkBookId: book._id }),
+        transaction.list('hw_daily_records', { studentId: student._id, homeworkBookId: book._id })
+      ]);
+      if (plans.length || records.length) fail('BOOK_HAS_PLAN', '该作业已有计划或完成记录，请在对应日期按计划录入');
+      if (completedAmount !== 0 && completedAmount !== totalAmount) fail('DATA_CHANGED', '该作业已有部分完成量，不能用整项勾选覆盖');
+      const next = event.isCompleted ? totalAmount : 0;
+      if (completedAmount !== next) await transaction.update('hw_homework_books', book._id, { completedAmount: next, updatedAt: now() });
+      return { studentId: student._id, homeworkBookId: book._id, isCompleted: event.isCompleted,
+        completedAmount: next, totalAmount, unchanged: completedAmount === next };
+    });
+  }
   async function generateTodayPlan(event, auth) {
     const date = shanghaiDate(now());
     return repo.runTransaction(async transaction => {
@@ -511,6 +550,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       if (event.action === 'createBook') data = await createBook(event, auth);
       if (event.action === 'createClassBooks') data = await createClassBooks(event, auth);
       if (event.action === 'createBookList') data = await createBookList(event, auth);
+      if (event.action === 'setBookComplete') data = await setBookComplete(event, auth);
       if (event.action === 'generateTodayPlan') data = await generateTodayPlan(event, auth);
       if (event.action === 'saveDailyRecord') data = await saveDailyRecord(event, auth);
       return { code: 'OK', data };

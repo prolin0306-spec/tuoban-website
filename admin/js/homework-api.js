@@ -57,7 +57,8 @@
           CLASS_CHANGE_BLOCKED: '学生已有今天或未来计划，V1 禁止调整班级',
           CLASS_EXISTS: '同名同年级班级已存在',
           CLASS_HAS_ACTIVE_STUDENTS: '班级仍有启用学生，请先停用这些学生',
-          NO_ACTIVE_STUDENTS: '当前班级没有可批量录入的启用学生'
+          NO_ACTIVE_STUDENTS: '当前班级没有可批量录入的启用学生',
+          BOOK_HAS_PLAN: '该作业已有计划或完成记录，请在对应日期按计划录入'
         };
         throw new HomeworkError(result.code, messages[result.code] || '作业服务暂不可用，请重试');
       }
@@ -89,6 +90,7 @@
       createBook: book => invoke('createBook', book),
       createClassBooks: value => invoke('createClassBooks', value),
       createBookList: value => invoke('createBookList', value),
+      setBookComplete: value => invoke('setBookComplete', value),
       generateTodayPlan: studentId => invoke('generateTodayPlan', { studentId }),
       saveDailyRecord: record => invoke('saveDailyRecord', record),
       async logout() {

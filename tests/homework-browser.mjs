@@ -139,6 +139,7 @@ try {
   await evaluate(`(()=>{document.getElementById('bookTarget').value='student';document.getElementById('bookTarget').dispatchEvent(new Event('change'));document.getElementById('bookStudent').value='student-b';document.getElementById('bookName').value='网页练习册';document.getElementById('bookSubject').value='math';document.getElementById('bookTotal').value='24';document.getElementById('bookWorkload').value='5';document.getElementById('bookUnit').value='页';document.getElementById('bookForm').requestSubmit()})()`);
   await until('document.body.innerText.includes("已保存 1 项作业，覆盖 1 名学生、1 本作业本")');
   const book=data.hw_homework_books.find(row=>row.name==='网页练习册');assert.ok(book);
+  assert.equal(await evaluate(`document.querySelector('[data-registered-book-id="${book._id}"]')!==null`),true);
   assert.deepEqual({studentId:book.studentId,classId:book.classId,subject:book.subject,totalAmount:book.totalAmount,
    workloadPerUnit:book.workloadPerUnit,unit:book.unit,completedAmount:book.completedAmount,isActive:book.isActive},
   {studentId:'student-b',classId:'class-a',subject:'math',totalAmount:24,workloadPerUnit:5,unit:'页',completedAmount:0,isActive:true});
@@ -196,6 +197,19 @@ try {
   assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
   assert.equal(await evaluate('document.querySelectorAll("[data-book-item]").length'),1);
   assert.ok((await evaluate('window.__test.confirms')).at(-1).includes('数学口算：30 题'));
+ });
+ await check('uploaded whole assignment appears and can be checked without a plan',async()=>{
+  const book=data.hw_homework_books.find(row=>row.name==='数学口算'&&row.studentId==='student-b');assert.ok(book);
+  const plansBefore=JSON.stringify(data.hw_daily_plans),recordsBefore=JSON.stringify(data.hw_daily_records);
+  assert.equal(await evaluate(`document.querySelector('[data-book-completion-toggle="${book._id}"]')!==null`),true);
+  await evaluate(`document.querySelector('[data-book-completion-toggle="${book._id}"]').click()`);
+  await until('document.body.innerText.includes("虚构学生乙 · 数学口算 已标记为整项完成")');
+  assert.equal(book.completedAmount,30);
+  await evaluate(`document.querySelector('[data-book-completion-toggle="${book._id}"]').click()`);
+  await until('document.body.innerText.includes("虚构学生乙 · 数学口算 已标记为未完成")');
+  assert.equal(book.completedAmount,0);
+  assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
+  assert.equal(JSON.stringify(data.hw_daily_records),recordsBefore);
  });
  await check('mobile layout, navigation and expandable tasks',async()=>{
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});

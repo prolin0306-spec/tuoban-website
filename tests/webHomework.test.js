@@ -701,6 +701,50 @@ test('concurrent repeated createBookList requests never duplicate a class assign
   assert.equal(s.data.hw_homework_books.filter(row => row.batchId === event.requestId).length, 4);
 });
 
+test('workspace lists uploaded books even without a daily plan, without generating one', async () => {
+  const d = fixture(); d.hw_homework_books.push({ _id: 'new-book', studentId: 'student-b', classId: 'class-a',
+    name: '刚上传的整项作业', totalAmount: 8, completedAmount: 0, unit: '题', isActive: true });
+  const before = structuredClone(d), s = setup(d);
+  const result = await s.handle({ action: 'workspace', classId: 'class-a', date: '2026-09-15' });
+  assert.equal(result.code, 'OK');
+  const student = result.data.students.find(row => row.id === 'student-b');
+  assert.ok(student.registeredBooks.some(book => book.id === 'new-book' && book.totalAmount === 8 && book.canCompleteWhole));
+  assert.equal(student.tasks.some(task => task.homeworkBookId === 'new-book'), false);
+  assert.deepEqual(d, before); assert.equal(s.mock.writes, 0);
+});
+
+test('whole-book checkbox updates only an unplanned book and can be unchecked', async () => {
+  const d = fixture(); d.hw_homework_books.push({ _id: 'new-book', studentId: 'student-b', classId: 'class-a',
+    name: '待完成', totalAmount: 8, completedAmount: 0, unit: '题', isActive: true });
+  const s = setup(d), plans = structuredClone(d.hw_daily_plans), records = structuredClone(d.hw_daily_records);
+  const event = { action: 'setBookComplete', studentId: 'student-b', homeworkBookId: 'new-book', isCompleted: true };
+  assert.equal((await s.handle(event)).code, 'OK');
+  assert.equal(d.hw_homework_books.at(-1).completedAmount, 8);
+  assert.equal((await s.handle(event)).data.unchanged, true);
+  assert.equal((await s.handle({ ...event, isCompleted: false })).code, 'OK');
+  assert.equal(d.hw_homework_books.at(-1).completedAmount, 0);
+  assert.deepEqual(d.hw_daily_plans, plans); assert.deepEqual(d.hw_daily_records, records);
+});
+
+test('whole-book checkbox refuses planned, recorded, partial and unauthorized books', async () => {
+  const d = fixture(); d.hw_homework_books.push({ _id: 'new-book', studentId: 'student-b', classId: 'class-a',
+    name: '待完成', totalAmount: 8, completedAmount: 0, isActive: true });
+  const s = setup(d), event = { action: 'setBookComplete', studentId: 'student-b', homeworkBookId: 'new-book', isCompleted: true };
+  assert.equal((await s.handle({ ...event, studentId: 'student-a' })).code, 'FORBIDDEN');
+  assert.equal((await s.handle({ ...event, role: 'boss' })).code, 'BAD_REQUEST');
+  d.hw_daily_plans.push({ _id: 'old-plan', studentId: 'student-b', homeworkBookId: 'new-book', date: '2026-09-14' });
+  assert.equal((await s.handle(event)).code, 'BOOK_HAS_PLAN');
+  d.hw_daily_plans.pop(); d.hw_daily_records.push({ _id: 'old-record', studentId: 'student-b', homeworkBookId: 'new-book', date: '2026-09-14' });
+  assert.equal((await s.handle(event)).code, 'BOOK_HAS_PLAN');
+  d.hw_daily_records.pop(); d.hw_homework_books.at(-1).completedAmount = 2;
+  assert.equal((await s.handle(event)).code, 'DATA_CHANGED');
+  assert.equal(d.hw_homework_books.at(-1).completedAmount, 2);
+  d.hw_homework_books.at(-1).completedAmount = 0;
+  s.mock.failWrite = ({ collection }) => collection === 'hw_homework_books';
+  const before = structuredClone(d); assert.equal((await s.handle(event)).code, 'UNAVAILABLE');
+  assert.deepEqual(d, before);
+});
+
 test('class batch books exclude inactive students and reject empty, oversized and unauthorized classes', async () => {
   const base = { action: 'createClassBooks', requestId: 'batch-request-002', name: '班级作业', totalAmount: 10 };
   const d = fixture(); d.hw_students[1].isActive = false; const s = setup(d);

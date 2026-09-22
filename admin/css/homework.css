@@ -43,6 +43,13 @@
 .hw-student[data-color="green"] .hw-risk { color: #047857; }
 .hw-alert { border-left: 3px solid var(--border); padding-left: 10px; font-size: 14px; }
 .hw-muted { color: var(--text-light); font-size: 13px; }
+.hw-registered { margin: 16px 0; }
+.hw-registered h3, .hw-today-heading { font-size: 16px; margin: 12px 0; }
+.hw-registered ul { list-style: none; display: grid; gap: 8px; }
+.hw-registered-item { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.hw-registered-item p { margin-top: 4px; }
+.hw-registered-main { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hw-registered-main > div { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .hw-tasks { list-style: none; }
 .hw-task { border-top: 1px solid var(--border); padding: 14px 0; display: grid; gap: 6px; line-height: 1.6; }
 .hw-task h3 { font-size: 15px; }
@@ -72,5 +79,6 @@
   .hw-book-form button { width: 100%; justify-content: center; }
   .adm-topbar { padding: 0 16px; gap: 10px; }
   .hw-student { padding: 16px; }
+  .hw-registered-main { align-items: start; flex-direction: column; }
   .hw-readonly { font-size: 12px; }
 }
