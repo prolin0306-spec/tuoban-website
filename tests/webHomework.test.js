@@ -118,11 +118,11 @@ test('paginated plan/record/book rows are also complete', async () => {
   }
   assert.equal((await setup(d).handle(request)).data.students[0].tasks.length, 125);
 });
-test('all queries have zero writes and exclude credentials/contact fields', async () => {
+test('queries without expired records have zero writes and exclude credentials', async () => {
   const s = setup(), before = JSON.stringify(s.data);
   for (const e of [{ action: 'session' }, { action: 'classes' }, { action: 'students' }, request]) assert.equal((await s.handle(e)).code, 'OK');
   assert.equal(s.mock.writes, 0); assert.equal(JSON.stringify(s.data), before);
-  for (const r of s.mock.reads) for (const k of ['password', 'phone', 'openid', 'parentPhone', 'note']) assert.ok(!r.fields[k]);
+  for (const r of s.mock.reads) for (const k of ['password', 'phone', 'openid', 'note']) assert.ok(!r.fields[k]);
 });
 test('database errors are sanitized', async () => {
   const handle = createService({ repo: { list() { throw new Error('sensitive-value'); } }, identity: async () => ({ uid: 'u', isAnonymous: false }), environmentId: 'test-env' });
@@ -844,4 +844,40 @@ test('new actions recheck teacher state and reject client authority fields', asy
     { action: 'setClassActive', classId: 'class-b', isActive: false, role: 'boss' },
     { action: 'createClassBooks', classId: 'class-a', requestId: 'batch-authority-02', name: '作业', totalAmount: 10, studentIds: ['student-a'] }
   ]) assert.equal((await setup().handle(event)).code, 'BAD_REQUEST');
+});
+test('new student and parent feedback identity save atomically', async () => {
+  const s = setup();
+  const event = { action: 'createStudent', name: '新增测试学生', grade: '二年级', classId: 'class-a', parentPhone: '13900000009' };
+  const result = await s.handle(event); assert.equal(result.code, 'OK');
+  const student = s.data.hw_students.find(row => row._id === result.data.id);
+  const child = s.data.children.find(row => row._id === student.feedbackChildId);
+  assert.equal(child.parentPhone, Number(event.parentPhone)); assert.equal(child.name, event.name);
+  const failed = setup(); failed.mock.failWrite = ({ collection }) => collection === 'hw_students';
+  const before = structuredClone(failed.data);
+  assert.equal((await failed.handle(event)).code, 'UNAVAILABLE'); assert.deepEqual(failed.data, before);
+});
+test('retention keeps day seven, removes day eight only in authorized classes', async () => {
+  const s = setup();
+  s.data.hw_daily_records.push({ _id: 'keep', classId: 'class-a', date: '2026-09-09' }, { _id: 'expire', classId: 'class-a', date: '2026-09-08' }, { _id: 'other', classId: 'class-c', date: '2026-09-08' });
+  const completed = s.data.hw_homework_books[0].completedAmount;
+  assert.equal((await s.handle(request)).code, 'OK');
+  assert.ok(s.data.hw_daily_records.some(row => row._id === 'keep'));
+  assert.ok(!s.data.hw_daily_records.some(row => row._id === 'expire'));
+  assert.ok(s.data.hw_daily_records.some(row => row._id === 'other'));
+  assert.equal(s.data.hw_homework_books[0].completedAmount, completed);
+  assert.equal((await s.handle({ ...request, date: '2026-09-08' })).code, 'DATE_EXPIRED');
+});
+test('daily assignments appear only on their assigned day and expire after seven days', async () => {
+  const s = setup();
+  const created = await s.handle({ action: 'createBookList', classId: 'class-a', studentId: 'student-a', requestId: 'daily-test-request', books: [{ name: '当天口算', totalAmount: 1 }] });
+  assert.equal(created.code, 'OK');
+  const daily = s.data.hw_homework_books.find(row => row.name === '当天口算');
+  assert.equal(daily.assignmentDate, '2026-09-15');
+  const prior = await s.handle({ ...request, date: '2026-09-14' });
+  assert.ok(!prior.data.students[0].registeredBooks.some(row => row.id === daily._id));
+  const today = await s.handle(request);
+  assert.ok(today.data.students[0].registeredBooks.some(row => row.id === daily._id));
+  daily.assignmentDate = '2026-09-08';
+  await s.handle(request);
+  assert.ok(!s.data.hw_homework_books.some(row => row._id === daily._id));
 });

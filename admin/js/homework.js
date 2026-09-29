@@ -260,7 +260,19 @@
   $('addBookItemButton').addEventListener('click', addBookRow);
   syncBookTarget();
   $('sidebarToggle').addEventListener('click', () => setTimeout(() => $('sidebarToggle').setAttribute('aria-expanded', String($('sidebar').classList.contains('open'))), 0));
-  $('dateSelect').value = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+  let calendarDay = '';
+  function refreshDay() {
+    const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+    if (today === calendarDay) return;
+    const changed = !!calendarDay; calendarDay = today;
+    $('dateSelect').value = today;
+    $('dateSelect').max = today;
+    $('dateSelect').min = new Date(Date.now() + 8 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
+    if (changed) { pendingBatchId = null; loadWorkspace(); }
+  }
+  refreshDay();
+  setInterval(refreshDay, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDay(); });
   window.initSidebar('homework.html');
   try { api.onExpired(() => { ++generation; failure({ code: 'AUTH_REQUIRED', message: '作业会话已过期，请重新验证' }); }); }
   catch (error) { failure(error); }

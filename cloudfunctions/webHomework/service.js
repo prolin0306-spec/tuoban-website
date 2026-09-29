@@ -12,8 +12,8 @@ const ACTION_KEYS = Object.freeze({
   updateClass: ['action', 'classId', 'name', 'grade'],
   setClassActive: ['action', 'classId', 'isActive'],
   students: ['action', 'classId', 'query'],
-  createStudent: ['action', 'name', 'grade', 'classId', 'speedLevel'],
-  updateStudent: ['action', 'studentId', 'name', 'grade', 'classId', 'speedLevel'],
+  createStudent: ['action', 'name', 'grade', 'classId', 'speedLevel', 'parentPhone'],
+  updateStudent: ['action', 'studentId', 'name', 'grade', 'classId', 'speedLevel', 'parentPhone'],
   setStudentActive: ['action', 'studentId', 'isActive'],
   feedbackChildren: ['action', 'phone'],
   linkFeedbackChild: ['action', 'studentId', 'childId', 'phone'],
@@ -198,7 +198,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
         rows.push({ id: student._id, name: student.name || '', grade: student.grade || '',
           classId: student.classId, className: cls.name || '', speedLevel: hasCompleteSpeed ? student.speedLevel : 'normal',
           speedCoefficient: hasCompleteSpeed ? student.speedCoefficient : SPEED_MAP.normal,
-          isActive: student.isActive === true, feedbackChildId: student.feedbackChildId || null, bookCount: books.length,
+          parentPhone: student.parentPhone || '', isActive: student.isActive === true, feedbackChildId: student.feedbackChildId || null, bookCount: books.length,
           hasCurrentOrFuturePlan: plans.some(plan => validDate(plan.date) && plan.date >= today) });
       }
     }
@@ -206,12 +206,30 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       a.name.localeCompare(b.name, 'zh-CN') || a.id.localeCompare(b.id));
     return { classes: auth.classes.map(cls => ({ id: cls._id, name: cls.name || '' })), students: rows };
   }
+  async function saveParent(transaction, student, event, cls) {
+    if (event.parentPhone === undefined) return {};
+    const parentPhone = String(event.parentPhone).trim();
+    if (!/^1\d{10}$/.test(parentPhone)) fail('BAD_REQUEST', '家长手机号无效');
+    const child = { name: event.name === undefined ? student.name : event.name.trim(), class: cls.name, parentPhone: Number(parentPhone) };
+    let childId = student.feedbackChildId;
+    if (childId) await transaction.update('children', childId, child);
+    else {
+      const matches = (await transaction.list('children')).filter(row => String(row.parentPhone) === parentPhone && row.name === child.name);
+      if (matches.length) {
+        const linked = await transaction.list('hw_students');
+        if (matches.length !== 1 || matches[0].class !== cls.name || linked.some(row => row.feedbackChildId === matches[0]._id)) fail('PARENT_LINK_EXISTS', '家长关联冲突，请核对已有学生');
+        childId = matches[0]._id;
+      } else childId = await transaction.add('children', child);
+    }
+    return { parentPhone, feedbackChildId: childId };
+  }
   async function createStudent(event, auth) {
     const name = text(event.name, '姓名', 100), grade = text(event.grade, '年级', 32);
     const speedFields = speed(event.speedLevel), timestamp = now();
     return repo.runTransaction(async transaction => {
       const cls = await resolveWritableClass(event.classId, auth, transaction);
-      const student = { name, grade, classId: cls._id, ...speedFields, isActive: true,
+      const parent = await saveParent(transaction, {}, event, cls);
+      const student = { name, grade, classId: cls._id, ...speedFields, ...parent, isActive: true,
         createdAt: timestamp, updatedAt: timestamp, operatorTeacherId: auth.teacher._id };
       const studentId = await transaction.add('hw_students', student);
       return { id: studentId, student: { ...student, id: studentId, className: cls.name || '', bookCount: 0,
@@ -219,7 +237,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
     });
   }
   async function updateStudent(event, auth) {
-    if (![event.name, event.grade, event.classId, event.speedLevel].some(value => value !== undefined)) {
+    if (![event.name, event.grade, event.classId, event.speedLevel, event.parentPhone].some(value => value !== undefined)) {
       fail('BAD_REQUEST', '没有可更新的学生字段');
     }
     const update = {};
@@ -240,6 +258,8 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
           update.classId = event.classId;
         }
       }
+      const cls = await resolveWritableClass(update.classId || student.classId, auth, transaction);
+      Object.assign(update, await saveParent(transaction, student, event, cls));
       update.updatedAt = now(); update.operatorTeacherId = auth.teacher._id;
       await transaction.update('hw_students', student._id, update);
       return { id: student._id, ...student, ...update };
@@ -305,7 +325,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       const records = allRecords.filter(record => record.date === date);
       const bookMap = new Map(books.map(book => [book._id, book]));
       const protectedBooks = new Set([...allPlans, ...allRecords].map(row => row.homeworkBookId));
-      const registeredBooks = books.filter(book => book.isActive === true).map(book => {
+      const registeredBooks = books.filter(book => book.isActive === true && (!book.assignmentDate || book.assignmentDate === date)).map(book => {
         const total = numeric(book.totalAmount) && book.totalAmount > 0 ? book.totalAmount : null;
         const completed = numeric(book.completedAmount) && book.completedAmount >= 0 ? book.completedAmount : null;
         const valid = total !== null && completed !== null && completed <= total;
@@ -347,7 +367,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       totalPlannedWorkload += plannedWorkload; totalCompletedWorkload += completedWorkload;
       const completionRate = plannedWorkload > 0 ? completedWorkload / plannedWorkload : 0;
       const actualRate = !incompleteRecords && plannedWorkload > 0 ? actualWorkload / plannedWorkload : null;
-      const projection = project(student, books.filter(book => book.isActive === true), settingsRows[0], date, shanghaiDate(now()));
+      const projection = project(student, books.filter(book => book.isActive === true && (!book.assignmentDate || book.assignmentDate === date)), settingsRows[0], date, shanghaiDate(now()));
       const actualRateReason = !plans.length ? '尚未生成计划' : !records.length ? '未记录' :
         tasks.some(task => task.hasPlan && task.status === 'unrecorded') ? '部分任务未记录，无法计算完整完成率' : '计划、实际记录或单位负载不足，无法计算';
       cards.push({ id: student._id, name: student.name || '', grade: student.grade || '',
@@ -449,7 +469,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
         for (const [index, item] of books.entries()) {
           const bookId = stableId('weblistbook', event.requestId, cls._id, student._id, index);
           const book = { studentId: student._id, classId: cls._id, ...item, completedAmount: 0,
-            isActive: true, batchId: event.requestId, createdAt, updatedAt: createdAt };
+            isActive: true, batchId: event.requestId, assignmentDate: shanghaiDate(createdAt), createdAt, updatedAt: createdAt };
           const existing = await transaction.list('hw_homework_books', { _id: bookId });
           if (existing.length) {
             const row = existing[0];
@@ -488,6 +508,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       ]);
       if (plans.length || records.length) fail('BOOK_HAS_PLAN', '该作业已有计划或完成记录，请在对应日期按计划录入');
       if (completedAmount !== 0 && completedAmount !== totalAmount) fail('DATA_CHANGED', '该作业已有部分完成量，不能用整项勾选覆盖');
+      if (book.assignmentDate && book.assignmentDate !== shanghaiDate(now())) fail('DATE_EXPIRED', '只能修改当天登记的作业');
       const next = event.isCompleted ? totalAmount : 0;
       if (completedAmount !== next) await transaction.update('hw_homework_books', book._id, { completedAmount: next, updatedAt: now() });
       return { studentId: student._id, homeworkBookId: book._id, isCompleted: event.isCompleted,
@@ -508,6 +529,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       const books = await transaction.list('hw_homework_books', { studentId: student._id, isActive: true });
       const plans = [];
       for (const book of books) {
+        if (book.assignmentDate && book.assignmentDate !== date) continue;
         const totalAmount = Number(book.totalAmount), completedAmount = Number(book.completedAmount);
         if (!Number.isFinite(totalAmount) || !Number.isFinite(completedAmount) || totalAmount < 0 ||
             completedAmount < 0 || completedAmount > totalAmount) fail('DATA_INVALID', '作业本总量或已完成量无效');
@@ -569,6 +591,17 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       if (Object.hasOwn(event, 'tcbContext') && (!event.tcbContext || typeof event.tcbContext !== 'object' || Array.isArray(event.tcbContext))) fail('BAD_REQUEST', '请求格式错误');
       if (Object.keys(event).some(key => !['userInfo', 'tcbContext', ...ACTION_KEYS[event.action]].includes(key))) fail('BAD_REQUEST', '请求包含不支持的字段');
       const auth = await authorize();
+      const cutoff = shanghaiDate(new Date(now().getTime() - 6 * 86400000));
+      if (event.date && validDate(event.date) && event.date < cutoff) fail('DATE_EXPIRED', '仅保留最近7天的作业情况');
+      for (const cls of auth.classes) {
+        for (const collection of ['hw_daily_plans', 'hw_daily_records', 'hw_homework_books']) {
+          const rows = await repo.list(collection, { classId: cls._id });
+          for (const row of rows) {
+            const date = collection === 'hw_homework_books' ? row.assignmentDate : row.date;
+            if (validDate(date) && date < cutoff) await repo.remove(collection, row._id);
+          }
+        }
+      }
       let data;
       if (event.action === 'session') data = { teacher: { id: auth.teacher._id, name: auth.teacher.name || '', role: auth.teacher.role } };
       if (event.action === 'classes') data = auth.classes.map(cls => ({ id: cls._id, name: cls.name || '', grade: cls.grade || '' }));

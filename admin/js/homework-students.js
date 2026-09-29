@@ -44,6 +44,8 @@
     for (const student of students) {
       const card = element('article', undefined, 'adm-card sm-student'); card.dataset.studentId = student.id;
       card.append(element('div', student.name || '未命名学生', 'sm-name'));
+      card.append(metadata('家长手机号', student.parentPhone || '未填写'));
+      if (student.feedbackChildId) { const feedback = element('a', '每日反馈', 'adm-btn adm-btn-secondary adm-btn-sm'); feedback.href = `report-editor.html?childId=${encodeURIComponent(student.feedbackChildId)}`; card.append(feedback); }
       card.append(metadata('年级', student.grade || '未填写'));
       card.append(metadata('班级', student.className || '未命名班级'));
       card.append(metadata('速度', `${speedNames[student.speedLevel] || '正常'}（${student.speedCoefficient}）`));
@@ -95,6 +97,7 @@
     editing = student || null; renderClassOptions($('studentClass'), false);
     $('studentId').value = student ? student.id : '';
     $('studentName').value = student ? student.name : '';
+    $('studentParentPhone').value = student ? student.parentPhone || '' : '';
     $('studentGrade').value = student ? student.grade : '';
     $('studentClass').value = student ? student.classId : ($('classFilter').value || (classes[0] ? classes[0].id : ''));
     $('studentSpeed').value = student && Object.hasOwn(speedNames, student.speedLevel) ? student.speedLevel : 'normal';
@@ -163,14 +166,16 @@
     event.preventDefault();
     const name = $('studentName').value.trim(), grade = $('studentGrade').value.trim();
     const classId = $('studentClass').value, speedLevel = $('studentSpeed').value;
+    const parentPhone = $('studentParentPhone').value.trim();
+    if (!/^1\d{10}$/.test(parentPhone)) { message('请输入正确的家长手机号', 'error'); return; }
     if (!name || !grade || !classId) { message('姓名、年级和班级均为必填项', 'error'); return; }
     const wasEditing = !!editing, target = classes.find(cls => cls.id === classId);
     const detail = wasEditing ? `确认保存学生“${name}”的修改？` : `确认新增学生“${name}”到“${target ? target.name : '所选班级'}”？`;
     if (!window.confirm(detail)) return;
     const button = $('saveStudentButton'); button.disabled = true;
     try {
-      if (wasEditing) await api.updateStudent({ studentId: editing.id, name, grade, classId, speedLevel });
-      else await api.createStudent({ name, grade, classId, speedLevel });
+      if (wasEditing) await api.updateStudent({ studentId: editing.id, name, grade, classId, speedLevel, parentPhone });
+      else await api.createStudent({ name, grade, classId, speedLevel, parentPhone });
       closeForm(); await loadStudents(); message(wasEditing ? '学生信息已更新' : '学生已新增');
     } catch (error) { message(error.message || '保存失败，请重试', 'error'); }
     finally { button.disabled = false; }

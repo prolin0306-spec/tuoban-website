@@ -51,6 +51,8 @@
           PLAN_REQUIRED: '当天没有该作业计划，不能录入',
           NO_WORKDAYS: '已无剩余工作日，无法生成计划',
           NO_TASKS: '没有可生成的剩余作业',
+          DATE_EXPIRED: '仅保留今天及前6天的作业情况',
+          PARENT_LINK_EXISTS: '该家长已有同名学生或关联冲突，请核对已有学生',
           FUTURE_DATE: '不能录入未来日期',
           DATA_INVALID: '作业本总量或已完成量异常，请先核对数据',
           AMOUNT_OUT_OF_RANGE: '保存后总完成量会超出作业本总量范围',

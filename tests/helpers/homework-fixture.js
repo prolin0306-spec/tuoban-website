@@ -52,6 +52,11 @@ function mockDatabase(data, serverPageSize = 17) {
       },
       doc(documentId) {
         return {
+          remove: async () => {
+            beforeWrite('remove', collection, documentId);
+            data[collection] = (data[collection] || []).filter(row => row._id !== documentId);
+            state.writes++; state.mutations.push({ op: 'remove', collection, id: documentId });
+          },
           set: async value => {
             beforeWrite('set', collection, documentId);
             if (!data[collection]) data[collection] = [];

@@ -16,7 +16,7 @@
   <main class="adm-main">
     <header class="adm-topbar">
       <button class="adm-sidebar-toggle" id="sidebarToggle" aria-label="切换导航" aria-expanded="false">☰</button>
-      <strong>作业工作台</strong><span class="adm-topbar-info" id="topbarInfo"></span>
+      <strong>作业管理</strong><span class="adm-topbar-info" id="topbarInfo"></span>
     </header>
     <div class="adm-content hw-content">
       <div class="hw-heading"><div><p><a href="homework-classes.html">作业班级管理</a> › 作业工作台</p><h1>班级作业清单</h1><p>先选班级，再逐项录入作业；学生完成一项后，在对应作业后勾选。</p></div><span class="hw-readonly">班级模式</span></div>
@@ -33,6 +33,7 @@
       </section>
       <div id="homeworkStatus" role="status" aria-live="polite"></div>
       <button id="retryButton" class="adm-btn adm-btn-secondary" hidden>重新加载</button>
+      <p class="hw-notice">每天登记当天作业，跨天自动切换。作业情况保留今天及前 6 天。</p>
       <section id="workspacePanel" hidden>
         <div class="adm-card hw-controls">
           <label for="classSelect">班级<select id="classSelect" class="adm-form-select"></select></label>

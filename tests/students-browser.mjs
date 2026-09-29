@@ -86,15 +86,15 @@ try {
   await check('authorized list shows status, class, speed and book counts', async () => {
     await until('document.querySelectorAll(".sm-student").length===2');
     const body = await evaluate('document.body.innerText');
-    for (const value of ['作业学生管理', '数据源：hw_students', '虚构学生甲', '测试甲班', '正常（0.8）', '3 本', '已启用']) assert.ok(body.includes(value));
+    for (const value of ['学生管理', '家长手机号', '虚构学生甲', '测试甲班', '正常（0.8）', '3 本', '已启用']) assert.ok(body.includes(value));
     assert.equal(await evaluate('document.getElementById("classFilter").options.length'), 3);
     assert.equal(await evaluate('document.getElementById("classFilter").value'), 'class-a');
     assert.equal(await evaluate('document.querySelector(`.sm-controls a[href="homework-classes.html"]`)!==null'), true);
     assert.equal(await evaluate('document.getElementById("classHomeworkLink").getAttribute("href")'), 'homework.html?classId=class-a');
-    assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'homework-students.html?classId=class-a');
+    assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'students.html');
     const links = await evaluate('Array.from(document.querySelectorAll(".adm-nav-item")).map(node=>node.getAttribute("href"))');
-    assert.ok(links.includes('homework-classes.html'));
-    assert.equal(links.indexOf('homework.html?classId=class-a') - links.indexOf('homework-students.html?classId=class-a'), 1);
+    assert.ok(!links.includes('homework-classes.html'));
+    assert.ok(links.includes('homework.html'));
   });
   await check('teacher explicitly links and unlinks the daily-feedback child', async () => {
     await evaluate('document.querySelector(`.sm-student[data-student-id="student-a"] .sm-actions button:last-child`).click()');
@@ -124,7 +124,7 @@ try {
     await evaluate(`document.getElementById('addButton').click()`); await until('document.getElementById("studentDialog").open');
     assert.equal(await evaluate('document.getElementById("studentSpeed").value'), 'normal');
     assert.equal(await evaluate('document.getElementById("studentClass").value'), 'class-a');
-    await evaluate(`document.getElementById('studentName').value='新增学生';document.getElementById('studentGrade').value='二年级';document.getElementById('studentClass').value='class-a';document.getElementById('studentForm').requestSubmit()`);
+    await evaluate(`document.getElementById('studentParentPhone').value='13900000009';document.getElementById('studentName').value='新增学生';document.getElementById('studentGrade').value='二年级';document.getElementById('studentClass').value='class-a';document.getElementById('studentForm').requestSubmit()`);
     await until('document.body.innerText.includes("学生已新增")');
     const student = data.hw_students.find(row => row.name === '新增学生'); assert.ok(student);
     assert.equal(student.speedLevel, 'normal'); assert.equal(student.speedCoefficient, 1); assert.equal(student.isActive, true);
@@ -135,7 +135,7 @@ try {
     await evaluate(`document.querySelector('.sm-student[data-student-id="student-b"] .sm-actions button').click()`);
     await until('document.getElementById("studentDialog").open');
     assert.equal(await evaluate('document.getElementById("studentClass").disabled'), false);
-    await evaluate(`document.getElementById('studentName').value='已编辑学生乙';document.getElementById('studentSpeed').value='fast';document.getElementById('studentClass').value='class-b';document.getElementById('studentForm').requestSubmit()`);
+    await evaluate(`document.getElementById('studentParentPhone').value='13900000008';document.getElementById('studentName').value='已编辑学生乙';document.getElementById('studentSpeed').value='fast';document.getElementById('studentClass').value='class-b';document.getElementById('studentForm').requestSubmit()`);
     await until('document.body.innerText.includes("学生信息已更新")');
     const student = data.hw_students.find(row => row._id === 'student-b');
     assert.equal(student.name, '已编辑学生乙'); assert.equal(student.classId, 'class-b'); assert.equal(student.speedCoefficient, 1.3);
