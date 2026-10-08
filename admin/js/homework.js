@@ -267,7 +267,6 @@
     const changed = !!calendarDay; calendarDay = today;
     $('dateSelect').value = today;
     $('dateSelect').max = today;
-    $('dateSelect').min = new Date(Date.now() + 8 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
     if (changed) { pendingBatchId = null; loadWorkspace(); }
   }
   refreshDay();

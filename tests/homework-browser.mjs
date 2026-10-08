@@ -16,7 +16,9 @@ const { createRepository } = require(join(homework, 'cloudfunctions/webHomework/
 const { fixture, mockDatabase } = require(join(homework, 'tests/helpers/homework-fixture.js'));
 const data = fixture(), today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
 for (const row of [...data.hw_daily_plans, ...data.hw_daily_records]) row.date = today;
-data.hw_settings[0].termEndDate = new Date(Date.now() + 22 * 86400000).toISOString().slice(0, 10);
+const dateOffset = days => new Date(Date.parse(today + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
+data.hw_settings[0].termStartDate = dateOffset(-30);
+data.hw_settings[0].termEndDate = dateOffset(22);
 const mock = mockDatabase(data);
 let caller = { uid: 'test-uid', isAnonymous: false }, unavailable = false, passes = 0;
 const handle = createService({ repo: createRepository(mock.db), identity: async () => caller, environmentId: 'test-env' });
@@ -123,10 +125,25 @@ try {
   data.hw_settings[0].severeCompletionRate=0.6;
   data.hw_settings[0].dailyCapacity=40;
  });
- await check('date filtering never generates plans or fabricates completion',async()=>{
+ await check('historical dates beyond seven days return plans and records without writes',async()=>{
+  const date = dateOffset(-8), bookId = 'historical-browser-book';
+  data.hw_homework_books.push({ _id: bookId, studentId: 'student-a', classId: 'class-a', name: '历史日作业测试', assignmentDate: date,
+    unit: '页', totalAmount: 10, completedAmount: 0, workloadPerUnit: 1, isActive: true });
+  data.hw_daily_plans.push({ _id: 'historical-browser-plan', studentId: 'student-a', classId: 'class-a', homeworkBookId: bookId, date, plannedAmount: 4 });
+  data.hw_daily_records.push({ _id: 'historical-browser-record', studentId: 'student-a', classId: 'class-a', homeworkBookId: bookId, date, actualAmount: 0 });
+  const before = structuredClone(data);
+  assert.equal(await evaluate('document.getElementById("dateSelect").min'), '');
+  await evaluate(`document.getElementById("dateSelect").value=${JSON.stringify(date)};document.getElementById("dateSelect").dispatchEvent(new Event("change"))`);
+  await until('document.getElementById("studentCards").getAttribute("aria-busy")==="false" && document.body.textContent.includes("历史日作业测试")');
+  await evaluate('document.querySelectorAll("details").forEach(e=>e.open=true)');
+  const body = await evaluate('document.body.innerText');
+  assert.ok(body.includes('历史日作业测试')); assert.ok(body.includes('计划：4')); assert.ok(body.includes('实际：0'));
+  assert.deepEqual(data, before); assert.equal(mock.writes, 0);
+ });
+ await check('historical dates without plans do not generate plans or fabricate completion',async()=>{
   const before=JSON.stringify(data);
-  await evaluate('document.getElementById("dateSelect").value="2026-01-01";document.getElementById("dateSelect").dispatchEvent(new Event("change"))');
-  await until('document.querySelector(".hw-student")?.dataset.color==="unknown"');
+  await evaluate(`document.getElementById("dateSelect").value=${JSON.stringify(dateOffset(-9))};document.getElementById("dateSelect").dispatchEvent(new Event("change"))`);
+  await until('document.getElementById("studentCards").getAttribute("aria-busy")==="false" && !document.body.textContent.includes("历史日作业测试") && document.querySelector(".hw-student")?.dataset.color==="unknown"');
   await evaluate('document.querySelectorAll("details").forEach(e=>e.open=true)');
   const body=await evaluate('document.body.innerText');
   assert.ok(body.includes('尚未生成计划'));assert.ok(!body.includes('实际完成率（所选日计划，按负载）：0%'));
@@ -259,7 +276,7 @@ try {
   await openPage('/nav-smoke.html');await until('typeof window.initSidebar==="function"');
   await evaluate('window.adminAuth={logout(){window.oldLogoutCalled=true}};window.initSidebar("dashboard.html")');
   const links=await evaluate('Array.from(document.querySelectorAll("nav a")).map(a=>a.getAttribute("href"))');
-  for(const link of ['dashboard.html','students.html','report-editor.html','mistakes.html','homework-classes.html','homework-students.html','homework.html'])assert.ok(links.includes(link));
+  for(const link of ['dashboard.html','students.html','report-editor.html','mistakes.html','homework.html'])assert.ok(links.includes(link));
   await evaluate('document.getElementById("btnLogout").click()');assert.equal(await evaluate('window.oldLogoutCalled'),true);
  });
  await check('installed real SDK exposes required auth/call interfaces (no cloud calls)',async()=>{

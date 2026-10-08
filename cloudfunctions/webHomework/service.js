@@ -311,8 +311,12 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
   async function workspace(classId, date, auth) {
     const cls = auth.classes.find(item => item._id === classId);
     if (!cls) fail('FORBIDDEN', '无权查看该班级');
-    const students = await repo.list('hw_students', { classId, isActive: true });
     const settingsRows = await repo.list('hw_settings', { _id: 'global' });
+    const settings = settingsRows[0];
+    if (settingsRows.length !== 1 || !validDate(settings.termStartDate) || !validDate(settings.termEndDate) ||
+        settings.termStartDate > settings.termEndDate) fail('TERM_NOT_CONFIGURED', '学期日期配置无效，请联系管理员');
+    if (date < settings.termStartDate || date > settings.termEndDate) fail('DATE_OUTSIDE_TERM', '查询日期不在已配置学期范围内');
+    const students = await repo.list('hw_students', { classId, isActive: true });
     const cards = [];
     let totalPlannedWorkload = 0, totalCompletedWorkload = 0;
     for (const student of students) {
@@ -591,17 +595,6 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       if (Object.hasOwn(event, 'tcbContext') && (!event.tcbContext || typeof event.tcbContext !== 'object' || Array.isArray(event.tcbContext))) fail('BAD_REQUEST', '请求格式错误');
       if (Object.keys(event).some(key => !['userInfo', 'tcbContext', ...ACTION_KEYS[event.action]].includes(key))) fail('BAD_REQUEST', '请求包含不支持的字段');
       const auth = await authorize();
-      const cutoff = shanghaiDate(new Date(now().getTime() - 6 * 86400000));
-      if (event.date && validDate(event.date) && event.date < cutoff) fail('DATE_EXPIRED', '仅保留最近7天的作业情况');
-      for (const cls of auth.classes) {
-        for (const collection of ['hw_daily_plans', 'hw_daily_records', 'hw_homework_books']) {
-          const rows = await repo.list(collection, { classId: cls._id });
-          for (const row of rows) {
-            const date = collection === 'hw_homework_books' ? row.assignmentDate : row.date;
-            if (validDate(date) && date < cutoff) await repo.remove(collection, row._id);
-          }
-        }
-      }
       let data;
       if (event.action === 'session') data = { teacher: { id: auth.teacher._id, name: auth.teacher.name || '', role: auth.teacher.role } };
       if (event.action === 'classes') data = auth.classes.map(cls => ({ id: cls._id, name: cls.name || '', grade: cls.grade || '' }));

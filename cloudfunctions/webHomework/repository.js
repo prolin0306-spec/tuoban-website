@@ -44,10 +44,6 @@ function accessor(source) {
         if (rows.length > 50000) fail('DATA_LIMIT', '数据量超出单次读取范围，请联系管理员');
       }
     },
-    async remove(collection, documentId) {
-      if (!['hw_daily_plans', 'hw_daily_records', 'hw_homework_books'].includes(collection)) fail('BAD_REQUEST', '不支持的清理');
-      await source.collection(collection).doc(documentId).remove();
-    },
     async add(collection, data) {
       const result = await source.collection(collection).add(writeData(collection, data));
       if (!result || !result.id) fail('DATA_UNAVAILABLE', '写入失败，请重试');

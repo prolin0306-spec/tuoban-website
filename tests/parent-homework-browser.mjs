@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
+import { createBrowserProfile, stopBrowser } from './helpers/browser-profile.mjs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -39,7 +39,7 @@ const server = http.createServer(async (req, res) => {
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = 'http://127.0.0.1:' + server.address().port;
-const profile = await mkdtemp(join(tmpdir(), 'chunribu-parent-browser-'));
+const browserProfile = await createBrowserProfile(), profile = browserProfile.path;
 const chrome = spawn(process.env.CHROME_BIN || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
     '--disable-component-update', '--disable-sync', '--metrics-recording-only', '--disable-extensions',
@@ -74,11 +74,18 @@ try {
       const task = pending.get(message.id); pending.delete(message.id); clearTimeout(task.timer);
       message.error ? task.reject(new Error(message.error.message)) : task.resolve(message.result);
     }
+    if (message.method === 'Fetch.requestPaused') {
+      const local = message.params.request.url.startsWith(origin + '/');
+      send(local ? 'Fetch.continueRequest' : 'Fetch.failRequest', local ? { requestId: message.params.requestId } :
+        { requestId: message.params.requestId, errorReason: 'BlockedByClient' }, message.sessionId).catch(() => {});
+    }
   };
   const target = await send('Target.createTarget', { url: 'about:blank' });
   const attached = await send('Target.attachToTarget', { targetId: target.targetId, flatten: true });
   sessionId = attached.sessionId;
   await send('Runtime.enable'); await send('Page.enable');
+  await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+  const before = structuredClone(data);
   await send('Page.navigate', { url: origin + '/daily-feedback.html' });
   await until('document.getElementById("queryBtn") && window.cloudbase');
   await evaluate(`document.getElementById('phoneInput').value='13800000001'; document.getElementById('queryBtn').click()`);
@@ -88,8 +95,16 @@ try {
   await evaluate(`document.getElementById('phoneInput').value='13800000002'; document.getElementById('queryBtn').click()`);
   await until('document.getElementById("homeworkCaption").textContent.includes("尚未关联")');
   assert.equal(await evaluate('document.querySelectorAll(".df-homework-card").length'), 0);
-  assert.equal(mock.writes, 0);
+  assert.deepEqual(data, before); assert.equal(mock.writes, 0);
   console.log('PASS parent feedback shows linked homework, daily actual and clears it on another phone; simulated writes=0');
 } finally {
-  if (socket) socket.close(); chrome.kill(); server.close(); await rm(profile, { recursive: true, force: true });
+  for (const task of pending.values()) clearTimeout(task.timer);
+  if (socket) socket.close();
+  try {
+    await stopBrowser(chrome);
+    await browserProfile.remove();
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
 }

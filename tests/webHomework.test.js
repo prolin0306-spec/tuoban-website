@@ -118,7 +118,7 @@ test('paginated plan/record/book rows are also complete', async () => {
   }
   assert.equal((await setup(d).handle(request)).data.students[0].tasks.length, 125);
 });
-test('queries without expired records have zero writes and exclude credentials', async () => {
+test('queries have zero writes and exclude credentials', async () => {
   const s = setup(), before = JSON.stringify(s.data);
   for (const e of [{ action: 'session' }, { action: 'classes' }, { action: 'students' }, request]) assert.equal((await s.handle(e)).code, 'OK');
   assert.equal(s.mock.writes, 0); assert.equal(JSON.stringify(s.data), before);
@@ -856,28 +856,92 @@ test('new student and parent feedback identity save atomically', async () => {
   const before = structuredClone(failed.data);
   assert.equal((await failed.handle(event)).code, 'UNAVAILABLE'); assert.deepEqual(failed.data, before);
 });
-test('retention keeps day seven, removes day eight only in authorized classes', async () => {
-  const s = setup();
-  s.data.hw_daily_records.push({ _id: 'keep', classId: 'class-a', date: '2026-09-09' }, { _id: 'expire', classId: 'class-a', date: '2026-09-08' }, { _id: 'other', classId: 'class-c', date: '2026-09-08' });
-  const completed = s.data.hw_homework_books[0].completedAmount;
-  assert.equal((await s.handle(request)).code, 'OK');
-  assert.ok(s.data.hw_daily_records.some(row => row._id === 'keep'));
-  assert.ok(!s.data.hw_daily_records.some(row => row._id === 'expire'));
-  assert.ok(s.data.hw_daily_records.some(row => row._id === 'other'));
-  assert.equal(s.data.hw_homework_books[0].completedAmount, completed);
-  assert.equal((await s.handle({ ...request, date: '2026-09-08' })).code, 'DATE_EXPIRED');
+function historicalFixture() {
+  const d = fixture();
+  // Both authorized and unauthorized historical data must survive every read.
+  for (const [classId, studentId] of [['class-a', 'student-a'], ['class-c', 'other-student']]) {
+    for (const date of ['2026-08-15', '2026-09-07', '2026-09-08', '2026-09-09']) {
+      const suffix = classId + date, homeworkBookId = 'history-book-' + suffix;
+      d.hw_homework_books.push({ _id: homeworkBookId, studentId, classId, name: '历史日作业', assignmentDate: date,
+        totalAmount: 10, completedAmount: 0, workloadPerUnit: 1, unit: '页', isActive: true });
+      d.hw_daily_plans.push({ _id: 'history-plan-' + suffix, studentId, classId, homeworkBookId, date, plannedAmount: 4 });
+      d.hw_daily_records.push({ _id: 'history-record-' + suffix, studentId, classId, homeworkBookId, date, actualAmount: 0 });
+    }
+  }
+  return d;
+}
+test('every read action preserves complete historical plans, records and books with zero writes', async () => {
+  const s = setup(historicalFixture(), { uid: 'test-uid', isAnonymous: false }, 2);
+  const before = structuredClone(s.data);
+  const counts = data => Object.fromEntries(Object.entries(data).map(([key, rows]) => [key, rows.length]));
+  const requests = [{ action: 'session' }, { action: 'classes' }, { action: 'managedClasses' },
+    { action: 'students' }, { action: 'students', classId: 'class-a' },
+    { action: 'feedbackChildren', phone: String(s.data.children[0].parentPhone) },
+    request, { ...request, date: '2026-09-07' }];
+  for (let repeat = 0; repeat < 2; repeat++) for (const event of requests) {
+    assert.equal((await s.handle(event)).code, 'OK', event.action);
+    assert.deepEqual(counts(s.data), counts(before), event.action + ': counts');
+    assert.deepEqual(s.data, before, event.action + ': contents');
+    assert.equal(s.mock.writes, 0, event.action + ': writes');
+    assert.deepEqual(s.mock.mutations, []);
+  }
 });
-test('daily assignments appear only on their assigned day and expire after seven days', async () => {
+test('more than seven days of history returns daily books, plans and recorded zero without mutations', async () => {
+  const s = setup(historicalFixture()), before = structuredClone(s.data);
+  for (const date of ['2026-09-07', '2026-09-08', '2026-09-09']) {
+    const result = await s.handle({ ...request, date });
+    assert.equal(result.code, 'OK');
+    const card = result.data.students.find(row => row.id === 'student-a');
+    assert.ok(card.registeredBooks.some(row => row.id === 'history-book-class-a' + date));
+    assert.equal(card.tasks.length, 1); assert.equal(card.tasks[0].planned, 4);
+    assert.equal(card.tasks[0].actual, 0); assert.equal(card.tasks[0].status, 'zero');
+    assert.equal(card.projection.rate, null); // Do not invent a historical prediction.
+  }
+  assert.deepEqual(s.data, before); assert.equal(s.mock.writes, 0);
+});
+test('history validates real dates, inclusive semester boundaries and permissions without deleting anything', async () => {
+  const s = setup(historicalFixture()), before = structuredClone(s.data);
+  for (const date of ['2026-09-01', '2026-09-30']) assert.equal((await s.handle({ ...request, date })).code, 'OK');
+  for (const date of ['2026-08-31', '2026-10-01']) assert.equal((await s.handle({ ...request, date })).code, 'DATE_OUTSIDE_TERM');
+  for (const date of ['2026-02-30', '2026-9-07', 'not-a-date']) assert.equal((await s.handle({ ...request, date })).code, 'BAD_REQUEST');
+  assert.equal((await s.handle({ ...request, classId: 'class-c', date: '2026-09-07' })).code, 'FORBIDDEN');
+  assert.deepEqual(s.data, before); assert.equal(s.mock.writes, 0);
+});
+test('missing or malformed semester configuration fails clearly without writes', async () => {
+  for (const settings of [[], [{ _id: 'global' }], [{ _id: 'global', termStartDate: '2026-09-31', termEndDate: '2026-10-01' }],
+    [{ _id: 'global', termStartDate: '2026-10-01', termEndDate: '2026-09-01' }]]) {
+    const d = historicalFixture(); d.hw_settings = settings;
+    const s = setup(d), before = structuredClone(d);
+    assert.equal((await s.handle(request)).code, 'TERM_NOT_CONFIGURED');
+    assert.deepEqual(s.data, before); assert.equal(s.mock.writes, 0);
+  }
+});
+test('cleanup and purge have neither public actions nor repository deletion methods', async () => {
+  const s = setup(historicalFixture()), before = structuredClone(s.data);
+  for (const action of ['cleanup', 'purge', 'remove', 'delete', 'cleanupHistory']) {
+    assert.equal((await s.handle({ action })).code, 'BAD_REQUEST');
+  }
+  assert.equal(createRepository(s.mock.db).remove, undefined);
+  assert.deepEqual(s.data, before); assert.equal(s.mock.writes, 0);
+});
+test('daily assignments stay on their assigned day and remain queryable after seven days', async () => {
   const s = setup();
   const created = await s.handle({ action: 'createBookList', classId: 'class-a', studentId: 'student-a', requestId: 'daily-test-request', books: [{ name: '当天口算', totalAmount: 1 }] });
   assert.equal(created.code, 'OK');
   const daily = s.data.hw_homework_books.find(row => row.name === '当天口算');
   assert.equal(daily.assignmentDate, '2026-09-15');
-  const prior = await s.handle({ ...request, date: '2026-09-14' });
+  const read = setup(structuredClone(s.data)); // Fresh counters after the explicit creation.
+  const before = structuredClone(read.data);
+  const prior = await read.handle({ ...request, date: '2026-09-14' });
   assert.ok(!prior.data.students[0].registeredBooks.some(row => row.id === daily._id));
-  const today = await s.handle(request);
+  const today = await read.handle(request);
   assert.ok(today.data.students[0].registeredBooks.some(row => row.id === daily._id));
-  daily.assignmentDate = '2026-09-08';
-  await s.handle(request);
-  assert.ok(!s.data.hw_homework_books.some(row => row._id === daily._id));
+  assert.deepEqual(read.data, before); assert.equal(read.mock.writes, 0);
+  const historical = structuredClone(s.data);
+  historical.hw_homework_books.find(row => row._id === daily._id).assignmentDate = '2026-09-07';
+  const older = setup(historical), snapshot = structuredClone(historical);
+  const result = await older.handle({ ...request, date: '2026-09-07' });
+  assert.ok(result.data.students[0].registeredBooks.some(row => row.id === daily._id));
+  await older.handle(request);
+  assert.deepEqual(older.data, snapshot); assert.equal(older.mock.writes, 0);
 });

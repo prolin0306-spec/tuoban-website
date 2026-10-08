@@ -24,6 +24,10 @@
 
 学生新增、编辑和启停会写入 `updatedAt`、`operatorTeacherId`，新增另写 `createdAt`。停用学生后，作业本新增、今日计划生成和完成量录入都会因学生未启用而拒绝；重新启用不会重建或删除历史数据。官网不提供物理删除 action，也不更新 `hw_classes.studentCount`，避免学生写入跨集合后出现部分成功。
 
+历史保留规则：`session`、`classes`、`managedClasses`、`students`、`feedbackChildren`、`workspace` 都是零写入查询，不因打开页面、查询、数据年龄或学期结束清理计划、记录和日作业本。服务与 repository 不提供 cleanup/purge/物理删除入口。已有数据持续保留；本次修复不能恢复此前已经被删除的数据。
+
+工作台取消滚动 7 天限制，允许查询已配置学期内任意历史日期（含学期首尾）。服务端先验证班级权限及真实日期，再验证 `hw_settings/global` 的 `termStartDate` 与 `termEndDate`；缺失或错误配置返回 `TERM_NOT_CONFIGURED`，超出范围返回 `DATE_OUTSIDE_TERM`，均不写数据。日作业本仍按登记日期展示，历史计划与实际量按所选日期读取；历史预测数据不足时不推测完成率。原有老师主动录入和生成今日计划功能保留，查询不会触发它们。
+
 服务端“今天”固定按 `Asia/Shanghai`（UTC+08:00）换算，生成计划和未来日期校验不使用运行时默认时区。
 
 纯计算规则抽取自 homework-manager：
@@ -38,18 +42,19 @@
 本地测试不会连接 CloudBase：
 
 ```sh
-node --test tests/homework-api.test.js tests/webHomework.test.js
+node --test tests/*.test.js
 node tests/homework-browser.mjs
 node tests/students-browser.mjs
 node tests/classes-browser.mjs
+node tests/parent-homework-browser.mjs
 ```
 
 浏览器测试需要 Node >=22 和本机 Chrome，使用临时浏览器配置并拦截所有非本地请求。部署前需再次核对生产索引、事务能力、Web 安全来源及数据库安全规则仍禁止浏览器直接写 `hw_*`。
 
 ## 2026-09-29 学生管理与每日作业更新
 
-学生入口统一为 `admin/students.html`，班级管理由该页面进入。新增/编辑学生支持家长手机号，事务内写入反馈学生与关联；手机号按现有家长查询约定以 Number 写入 children。
+学生入口统一为 `admin/students.html`，班级管理由该页面进入。新增/编辑学生支持家长手机号，事务内写入反馈学生与关联；手机号按现有家长查询约定以 Number 写入 children。这些已有功能保留。
 
-`createBookList` 创建的每日作业带有北京时间 `assignmentDate`，只在对应日期显示。每次已授权请求清理获授权班级早于今天前 6 天的每日计划、完成记录和带日期的每日作业本；没有 assignmentDate 的长期作业本与累计完成量保留。此清理随访问触发，不使用定时任务。过期日期的查询与录入均拒绝。
+`createBookList` 创建的每日作业带有北京时间 `assignmentDate`，只在对应日期显示。每日作业本、计划和实际记录持续保留，查询不会清理；没有 assignmentDate 的长期作业本及累计完成量也保留。老师主动维护学生时允许在事务内写 children，查询 action 不写任何业务集合。
 
-以上规则取代前文“所有历史数据保留”和写集合不含 children 的旧说明。
+算法完整性测试默认读取相邻的 homework-manager 副本；在独立发布工作区运行时，可用 `HOMEWORK_MANAGER_ROOT` 指定该副本绝对路径。校验始终使用修复前固定的八份算法 SHA-256。

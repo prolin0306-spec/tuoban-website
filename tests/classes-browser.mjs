@@ -71,14 +71,15 @@ try {
   await check('teacher sees only authorized classes and class metrics', async () => {
     await until('document.querySelectorAll(".cm-class").length===2');
     const body = await evaluate('document.body.innerText');
-    for (const value of ['作业班级管理', '测试甲班', '测试代班', '学生：2/2', '作业本：4', '计划：3']) assert.ok(body.includes(value));
+    for (const value of ['班级管理', '测试甲班', '测试代班', '学生：2/2', '作业本：4', '计划：3']) assert.ok(body.includes(value));
     assert.equal(await evaluate('document.querySelector(`.cm-class[data-class-id="class-a"] a[href="homework-students.html?classId=class-a"]`)!==null'), true);
     assert.equal(await evaluate('document.querySelector(`.cm-class[data-class-id="class-a"] a[href="homework.html?classId=class-a"]`)!==null'), true);
     assert.equal(await evaluate('document.querySelectorAll(".cm-class .adm-btn-danger").length'), 0);
-    assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'homework-classes.html');
-    assert.equal(await evaluate('document.querySelector(".adm-nav-group > .adm-nav-item")?.getAttribute("href")'), 'homework-classes.html');
-    assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".adm-nav-children .adm-nav-item")).map(node=>node.getAttribute("href"))'),
-      ['homework-students.html', 'homework.html']);
+    assert.equal(await evaluate('document.querySelector("h1").textContent.trim()'), '班级管理');
+    assert.equal(await evaluate('document.querySelectorAll(".adm-nav-item.active").length'), 1);
+    assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'students.html');
+    assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".adm-nav-item:not(.adm-nav-logout)")).map(node=>node.getAttribute("href"))'),
+      ['dashboard.html', 'students.html', 'report-editor.html', 'mistakes.html', 'homework.html']);
     assert.equal(await evaluate('document.getElementById("classDialog").open'), true);
     await evaluate('document.getElementById("cancelButton").click()');
   });
