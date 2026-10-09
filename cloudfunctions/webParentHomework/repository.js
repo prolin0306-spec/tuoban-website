@@ -1,8 +1,9 @@
 'use strict';
 const FIELDS = Object.freeze({
   children: ['_id', 'parentPhone'],
-  hw_students: ['_id', 'feedbackChildId'],
-  hw_homework_books: ['_id', 'studentId', 'name', 'subject', 'unit', 'totalAmount', 'completedAmount'],
+  hw_students: ['_id', 'feedbackChildId', 'name', 'classId', 'isActive'],
+  hw_classes: ['_id', 'name'],
+  hw_homework_books: ['_id', 'studentId', 'name', 'subject', 'unit', 'totalAmount', 'completedAmount', 'assignmentDate', 'isActive'],
   hw_daily_plans: ['_id', 'studentId', 'homeworkBookId', 'date', 'plannedAmount'],
   hw_daily_records: ['_id', 'studentId', 'homeworkBookId', 'date', 'actualAmount']
 });

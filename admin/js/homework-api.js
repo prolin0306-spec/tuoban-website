@@ -68,6 +68,13 @@
       }
       return result.data;
     }
+    async function studentMutation(action, value) {
+      const data = await invoke(action, value);
+      if (typeof window === 'object') {
+        try { window.localStorage.setItem('homework-students-revision', String(Date.now()) + ':' + Math.random()); } catch (_) { /* Refresh remains available when storage is disabled. */ }
+      }
+      return data;
+    }
     return Object.freeze({
       async login(username, password) {
         init();
@@ -84,16 +91,17 @@
       classes: () => invoke('classes'),
       managedClasses: () => invoke('managedClasses'),
       createClass: value => invoke('createClass', value),
-      updateClass: value => invoke('updateClass', value),
-      setClassActive: (classId, isActive) => invoke('setClassActive', { classId, isActive }),
+      updateClass: value => studentMutation('updateClass', value),
+      setClassActive: (classId, isActive) => studentMutation('setClassActive', { classId, isActive }),
       workspace: (classId, date) => invoke('workspace', { classId, date }),
       students: filters => invoke('students', filters || {}),
-      createStudent: student => invoke('createStudent', student),
-      updateStudent: student => invoke('updateStudent', student),
-      setStudentActive: (studentId, isActive) => invoke('setStudentActive', { studentId, isActive }),
+      feedbackStudents: filters => invoke('feedbackStudents', filters || {}),
+      createStudent: student => studentMutation('createStudent', student),
+      updateStudent: student => studentMutation('updateStudent', student),
+      setStudentActive: (studentId, isActive) => studentMutation('setStudentActive', { studentId, isActive }),
       feedbackChildren: phone => invoke('feedbackChildren', { phone }),
-      linkFeedbackChild: value => invoke('linkFeedbackChild', value),
-      unlinkFeedbackChild: value => invoke('unlinkFeedbackChild', value),
+      linkFeedbackChild: value => studentMutation('linkFeedbackChild', value),
+      unlinkFeedbackChild: value => studentMutation('unlinkFeedbackChild', value),
       createBook: book => invoke('createBook', book),
       createClassBooks: value => invoke('createClassBooks', value),
       createBookList: value => invoke('createBookList', value),

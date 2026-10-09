@@ -275,5 +275,7 @@
   window.initSidebar('homework.html');
   try { api.onExpired(() => { ++generation; failure({ code: 'AUTH_REQUIRED', message: '作业会话已过期，请重新验证' }); }); }
   catch (error) { failure(error); }
+  window.addEventListener('focus', () => { if (active) loadWorkspace(); });
+  window.addEventListener('storage', event => { if (event.key === 'homework-students-revision' && active) loadWorkspace(); });
   start();
 })();

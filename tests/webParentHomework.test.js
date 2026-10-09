@@ -75,3 +75,21 @@ test('identity is required; Shanghai date uses China day boundary', async () => 
   assert.equal(shanghaiToday(new Date('2026-09-15T15:59:59Z')), '2026-09-15');
   assert.equal(shanghaiToday(new Date('2026-09-15T16:00:00Z')), '2026-09-16');
 });
+
+test('parent homework follows current student profile and shows only today daily assignments plus active long-term books', async () => {
+  const {data,mock,handle}=setup();data.hw_students[0].feedbackChildId='feedback-child-a';
+  data.hw_students[0].name='更新后的测试姓名';data.hw_classes[0].name='更新后的测试班级';
+  data.hw_homework_books.push(...['2026-09-07','2026-09-16','2026-09-17'].map(date=>({_id:'daily-'+date,studentId:'student-a',name:date,assignmentDate:date,totalAmount:1,completedAmount:0,isActive:true})));
+  data.hw_homework_books.push({_id:'inactive-book',studentId:'student-a',name:'已停用作业',isActive:false});
+  const before=structuredClone(data),result=await handle(request);
+  assert.equal(result.code,'OK');assert.equal(result.data.student.name,'更新后的测试姓名');assert.equal(result.data.student.className,'更新后的测试班级');
+  const names=result.data.books.map(row=>row.name);assert.ok(names.includes('2026-09-16'));
+  for(const name of ['2026-09-07','2026-09-17','已停用作业'])assert.ok(!names.includes(name));
+  assert.equal(result.data.books.length,4);assert.deepEqual(data,before);assert.equal(mock.writes,0);
+});
+test('disabled parent-linked student retains history but no longer displays active homework', async () => {
+  const {data,mock,handle}=setup();data.hw_students[0].feedbackChildId='feedback-child-a';data.hw_students[0].isActive=false;
+  const before=structuredClone(data),result=await handle(request);
+  assert.equal(result.code,'OK');assert.equal(result.data.linked,true);assert.equal(result.data.isActive,false);assert.deepEqual(result.data.books,[]);
+  assert.deepEqual(data,before);assert.equal(mock.writes,0);
+});

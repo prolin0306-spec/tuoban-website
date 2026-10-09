@@ -131,7 +131,11 @@
       homeworkCaption.textContent = '尚未关联作业学生，请联系老师核对。';
       return;
     }
-    homeworkCaption.textContent = `截至当前的整项作业完成情况；今日计划与录入量对应 ${data.date || '今天'}。`;
+    if (data.isActive === false) {
+      homeworkCaption.textContent = '该学生已停用；已有每日反馈和错题记录继续保留。';
+      return;
+    }
+    homeworkCaption.textContent = `与老师作业管理同步：${data.date || '今天'}的日作业及长期作业；实际完成量以老师录入为准。`;
     if (!Array.isArray(data.books) || !data.books.length) {
       homeworkList.append(homeworkLine('p', '暂无登记的作业。'));
       return;
@@ -278,8 +282,8 @@
         }
 
         const childInfo = {
-          childName: child.name || '',
-          className: child.class || ''
+          childName: homework && homework.code === 'OK' && homework.data.student ? homework.data.student.name : child.name || '',
+          className: homework && homework.code === 'OK' && homework.data.student ? homework.data.student.className : child.class || ''
         };
 
         if (reports.length > 0) {

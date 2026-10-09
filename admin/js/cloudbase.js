@@ -1,19 +1,20 @@
 (() => {
   'use strict';
 
+  const legacySDK = window.cloudbase;
   const ENV_ID = 'tuoban-booking-d6g862sk51b7dbb40';
 
   let _db = null;
   let _ready = false;
 
   const init = () => {
-    if (typeof cloudbase === 'undefined') {
+    if (!legacySDK) {
       console.error('CloudBase SDK 未加载');
       return;
     }
 
     let app;
-    try { app = cloudbase.init({ env: ENV_ID }); }
+    try { app = legacySDK.init({ env: ENV_ID }); }
     catch (e) { console.error('init 失败:', e); return; }
 
     try { _db = app.database(); }

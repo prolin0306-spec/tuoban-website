@@ -14,6 +14,7 @@ const { createRepository } = require(join(site, 'cloudfunctions/webParentHomewor
 const { fixture, mockDatabase } = require(join(site, 'tests/helpers/homework-fixture.js'));
 const data = fixture(); data.hw_students[0].feedbackChildId = 'feedback-child-a';
 data.hw_homework_books[0].totalAmount = 2; data.hw_homework_books[0].completedAmount = 2;
+data.hw_homework_books.push({ _id:'old-daily', studentId:'student-a', name:'上周日作业不应出现', assignmentDate:'2026-09-07', isActive:true, totalAmount:1, completedAmount:0 });
 const mock = mockDatabase(data);
 const handle = createService({ repo: createRepository(mock.db), identity: async () => ({ uid: 'anonymous-test' }),
   now: () => new Date('2026-09-15T04:00:00Z') });
@@ -92,6 +93,13 @@ try {
   await until('document.querySelector(".df-homework-card")');
   assert.match(await evaluate('document.getElementById("homeworkSection").textContent'), /整项已完成/);
   assert.match(await evaluate('document.getElementById("homeworkSection").textContent'), /今日实际：2/);
+  assert.equal(await evaluate('document.getElementById("homeworkSection").textContent.includes("上周日作业不应出现")'),false);
+  data.hw_students[0].isActive=false;
+  await evaluate('document.getElementById("queryBtn").click()');
+  await until('document.getElementById("homeworkCaption").textContent.includes("已停用")');
+  assert.equal(await evaluate('document.querySelectorAll(".df-homework-card").length'),0);
+  data.hw_students[0].isActive=true;
+
   await evaluate(`document.getElementById('phoneInput').value='13800000002'; document.getElementById('queryBtn').click()`);
   await until('document.getElementById("homeworkCaption").textContent.includes("尚未关联")');
   assert.equal(await evaluate('document.querySelectorAll(".df-homework-card").length'), 0);

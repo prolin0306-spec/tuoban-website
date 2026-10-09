@@ -875,7 +875,7 @@ test('every read action preserves complete historical plans, records and books w
   const before = structuredClone(s.data);
   const counts = data => Object.fromEntries(Object.entries(data).map(([key, rows]) => [key, rows.length]));
   const requests = [{ action: 'session' }, { action: 'classes' }, { action: 'managedClasses' },
-    { action: 'students' }, { action: 'students', classId: 'class-a' },
+    { action: 'students' }, { action: 'feedbackStudents' }, { action: 'students', classId: 'class-a' },
     { action: 'feedbackChildren', phone: String(s.data.children[0].parentPhone) },
     request, { ...request, date: '2026-09-07' }];
   for (let repeat = 0; repeat < 2; repeat++) for (const event of requests) {
@@ -944,4 +944,52 @@ test('daily assignments stay on their assigned day and remain queryable after se
   assert.ok(result.data.students[0].registeredBooks.some(row => row.id === daily._id));
   await older.handle(request);
   assert.deepEqual(older.data, snapshot); assert.equal(older.mock.writes, 0);
+});
+
+test('feedback roster uses active managed students, explicit child IDs and class permissions without writes', async () => {
+  const s = setup(historicalFixture()); s.data.hw_students[0].feedbackChildId = 'feedback-child-a';
+  s.data.hw_students.push({ _id:'hidden-student', name:'不可见测试', classId:'class-c', isActive:true, feedbackChildId:'feedback-child-b' });
+  const before = structuredClone(s.data), result = await s.handle({ action:'feedbackStudents' });
+  assert.equal(result.code,'OK'); assert.equal(result.data.students.length,2);
+  const linked = result.data.students.find(row=>row.homeworkStudentId==='student-a');
+  assert.equal(linked._id,'feedback-child-a'); assert.equal(linked.feedbackLinked,true);
+  const unlinked = result.data.students.find(row=>row.homeworkStudentId==='student-b');
+  assert.equal(unlinked._id,null); assert.equal(unlinked.feedbackLinked,false);
+  assert.equal((await s.handle({action:'feedbackStudents',classId:'class-c'})).code,'FORBIDDEN');
+  assert.deepEqual(s.data,before); assert.equal(s.mock.writes,0);
+});
+test('new, renamed, moved, disabled and reenabled students stay consistent across all rosters', async () => {
+  const s=setup(); const history=structuredClone({plans:s.data.hw_daily_plans,records:s.data.hw_daily_records});
+  const created=await s.handle({action:'createStudent',name:'名单测试',grade:'二年级',classId:'class-a',parentPhone:'13900000009'});
+  assert.equal(created.code,'OK');const id=created.data.id;
+  const childId=s.data.hw_students.find(row=>row._id===id).feedbackChildId;
+  let result=await s.handle({action:'feedbackStudents'});
+  assert.equal(result.data.students.find(row=>row.homeworkStudentId===id)._id,childId);
+  assert.ok((await s.handle(request)).data.students.some(row=>row.id===id));
+  assert.equal((await s.handle({action:'updateStudent',studentId:id,name:'新名字',classId:'class-b'})).code,'OK');
+  result=await s.handle({action:'feedbackStudents',classId:'class-b'});
+  assert.equal(result.data.students[0].name,'新名字');assert.equal(result.data.students[0]._id,childId);
+  const child=s.data.children.find(row=>row._id===childId);assert.equal(child.name,'新名字');assert.equal(child.class,'测试代班');
+  assert.equal((await s.handle({action:'setStudentActive',studentId:id,isActive:false})).code,'OK');
+  assert.ok(!(await s.handle({action:'feedbackStudents'})).data.students.some(row=>row.homeworkStudentId===id));
+  assert.ok(!(await s.handle({...request,classId:'class-b'})).data.students.some(row=>row.id===id));
+  assert.ok((await s.handle({action:'students'})).data.students.some(row=>row.id===id && !row.isActive));
+  assert.equal((await s.handle({action:'setStudentActive',studentId:id,isActive:true})).code,'OK');
+  assert.equal((await s.handle({action:'feedbackStudents'})).data.students.find(row=>row.homeworkStudentId===id)._id,childId);
+  assert.deepEqual({plans:s.data.hw_daily_plans,records:s.data.hw_daily_records},history);
+});
+test('missing and duplicate feedback links cannot be used or overwrite another child', async () => {
+  const s=setup();s.data.hw_students[0].feedbackChildId='feedback-child-a';s.data.hw_students[1].feedbackChildId='feedback-child-a';
+  const before=structuredClone(s.data);
+  assert.ok((await s.handle({action:'feedbackStudents'})).data.students.every(row=>row._id===null));
+  assert.equal((await s.handle({action:'updateStudent',studentId:'student-a',name:'冲突修改'})).code,'DATA_CHANGED');
+  assert.deepEqual(s.data,before);assert.equal(s.mock.writes,0);
+  s.data.hw_students[0].feedbackChildId='missing-child';
+  assert.equal((await s.handle({action:'feedbackStudents'})).data.students.find(row=>row.homeworkStudentId==='student-a')._id,null);
+});
+test('feedback roster pagination includes all managed students and preserves read-only behavior', async () => {
+  const d=fixture();d.hw_students=Array.from({length:257},(_,i)=>({_id:'roster-'+i,name:'模拟学生'+i,classId:'class-a',isActive:true}));
+  const s=setup(d,{uid:'test-uid',isAnonymous:false},7),before=structuredClone(d);
+  assert.equal((await s.handle({action:'feedbackStudents'})).data.students.length,257);
+  assert.deepEqual(d,before);assert.equal(s.mock.writes,0);
 });

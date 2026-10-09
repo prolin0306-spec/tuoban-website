@@ -23,16 +23,25 @@
       <span class="adm-topbar-info" id="topbarInfo"></span>
     </header>
 
+    <div class="adm-content" style="padding-bottom:0">
+      <p>学生名单与学生管理同步，仅展示当前授权班级的启用学生。未关联家长反馈的学生，请先在学生管理中核对关联。</p>
+      <button type="button" class="adm-btn adm-btn-secondary" id="refreshFeedbackStudents">刷新学生名单</button>
+    </div>
+
     <div class="adm-content" id="editorContent">
       <div class="adm-loading"><div class="adm-spinner"></div><p style="margin-top:8px;">加载中...</p></div>
     </div>
   </div>
 
   <script src="../js/cloudbase.full.min.js"></script>
-  <script src="js/cloudbase.js"></script>
+  <script src="js/cloudbase.js?v=student-roster-1"></script>
   <script src="js/auth.js"></script>
   <script src="js/api.js"></script>
   <script src="js/common.js?v=workspace-navigation-1"></script>
+  <script src="../js/cloudbase-v3.10.0.full.min.js"></script>
+  <script src="js/homework-config.js"></script>
+  <script src="js/homework-api.js?v=student-roster-1"></script>
+  <script src="js/feedback-roster.js?v=student-roster-1"></script>
   <script>
     (() => {
       'use strict';
@@ -66,21 +75,21 @@
                   <div class="adm-card-header"><i class="fas fa-users"></i> 选择学生</div>
                   <div class="adm-student-grid">${students.map((s) => `
                     <div class="adm-student-card">
-                      <div class="adm-student-name">${s.name || ''}</div>
-                      <div class="adm-student-info"><i class="fas fa-graduation-cap"></i> ${s.class || ''}</div>
+                      <div class="adm-student-name">${window.feedbackRoster.escape(s.name)}</div>
+                      <div class="adm-student-info"><i class="fas fa-graduation-cap"></i> ${window.feedbackRoster.escape(s.class)}</div>
                       <div class="adm-student-actions">
-                        <a href="report-editor.html?childId=${s._id}" class="adm-btn adm-btn-primary adm-btn-sm">
-                          <i class="fas fa-edit"></i> 填写反馈
-                        </a>
+                        ${s.feedbackLinked ? `<a href="report-editor.html?childId=${encodeURIComponent(s._id)}" class="adm-btn adm-btn-primary adm-btn-sm">填写反馈</a>` :
+                          '<span>尚未关联家长反馈</span> <a href="students.html" class="adm-btn adm-btn-secondary adm-btn-sm">去学生管理关联</a>'}
                       </div>
                     </div>
                   `).join('')}</div>
                 </div>
               `;
-            }).catch(() => { window.showToast('加载失败', 'error'); });
+            }).catch(error => { document.getElementById('editorContent').replaceChildren(); window.feedbackRoster.showError(error); });
           });
         };
 
+        document.addEventListener('feedback-roster-refresh', initNoChild);
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', initNoChild);
         } else {
@@ -89,6 +98,19 @@
         return;
       }
 
+      document.addEventListener('feedback-roster-refresh', async () => {
+        try {
+          const student = await window.adminAPI.getStudent(childId);
+          if (!student) {
+            document.getElementById('editorContent').textContent = '该学生已停用、解除关联或不在当前授权范围。请从学生管理重新选择。';
+            return;
+          }
+          const meta = document.querySelector('.adm-report-meta span');
+          if (meta) meta.textContent = student.name + ' | ' + student.class;
+        } catch (error) {
+          document.getElementById('editorContent').replaceChildren(); window.feedbackRoster.showError(error);
+        }
+      });
       // ========== 反馈编辑表单 ==========
       let currentStudent = null;
 
@@ -97,7 +119,7 @@
         document.getElementById('editorContent').innerHTML = `
           <div class="adm-report-meta">
             <i class="fas fa-child" style="font-size:24px;color:var(--primary);"></i>
-            <span>${student.name} &nbsp;|&nbsp; ${student.class}</span>
+            <span>${window.feedbackRoster.escape(student.name)} &nbsp;|&nbsp; ${window.feedbackRoster.escape(student.class)}</span>
             <span style="margin-left:auto;font-size:14px;color:var(--text-light);">${adminAPI.today()}</span>
           </div>
 
@@ -215,8 +237,8 @@
             currentStudent = student;
             renderEditor(student, report);
           }).catch((err) => {
-            console.error('加载失败:', err);
-            window.showToast('加载失败', 'error');
+            document.getElementById('editorContent').replaceChildren();
+            window.feedbackRoster.showError(err);
           });
         });
       };

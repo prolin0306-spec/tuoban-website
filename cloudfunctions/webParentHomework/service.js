@@ -27,20 +27,23 @@ function createService({ repo, identity, now = () => new Date() }) {
       const students = await repo.list('hw_students', { feedbackChildId: event.childId });
       if (!students.length) return { code: 'OK', data: { linked: false, books: [], date: shanghaiToday(now()) } };
       if (students.length !== 1) return { code: 'DATA_CONFLICT', message: '学生关联异常，请联系老师' };
-      const studentId = students[0]._id;
+      const student = students[0], studentId = student._id;
       const date = shanghaiToday(now());
+      const classes = student.classId ? await repo.list('hw_classes', { _id: student.classId }) : [];
+      const profile = { name: student.name || '', className: classes.length === 1 ? classes[0].name || '' : '' };
+      if (student.isActive === false) return { code: 'OK', data: { linked: true, isActive: false, student: profile, books: [], date } };
       const [books, plans, records] = await Promise.all([
         repo.list('hw_homework_books', { studentId }),
         repo.list('hw_daily_plans', { studentId, date }),
         repo.list('hw_daily_records', { studentId, date })
       ]);
-      const validBooks = books.filter(book => book.studentId === studentId);
+      const validBooks = books.filter(book => book.studentId === studentId && book.isActive !== false && (!book.assignmentDate || book.assignmentDate === date));
       const bookIds = new Set(validBooks.map(book => book._id));
       const planByBook = new Map(plans.filter(plan => plan.studentId === studentId && plan.date === date && bookIds.has(plan.homeworkBookId))
         .map(plan => [plan.homeworkBookId, plan]));
       const recordByBook = new Map(records.filter(record => record.studentId === studentId && record.date === date && bookIds.has(record.homeworkBookId))
         .map(record => [record.homeworkBookId, record]));
-      return { code: 'OK', data: { linked: true, date, books: validBooks.map(book => {
+      return { code: 'OK', data: { linked: true, isActive: true, student: profile, date, books: validBooks.map(book => {
         const plan = planByBook.get(book._id), record = recordByBook.get(book._id);
         const totalAmount = Number(book.totalAmount), completedAmount = Number(book.completedAmount);
         return {

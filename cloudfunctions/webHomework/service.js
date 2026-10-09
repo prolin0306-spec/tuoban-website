@@ -12,6 +12,7 @@ const ACTION_KEYS = Object.freeze({
   updateClass: ['action', 'classId', 'name', 'grade'],
   setClassActive: ['action', 'classId', 'isActive'],
   students: ['action', 'classId', 'query'],
+  feedbackStudents: ['action', 'classId'],
   createStudent: ['action', 'name', 'grade', 'classId', 'speedLevel', 'parentPhone'],
   updateStudent: ['action', 'studentId', 'name', 'grade', 'classId', 'speedLevel', 'parentPhone'],
   setStudentActive: ['action', 'studentId', 'isActive'],
@@ -206,13 +207,57 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       a.name.localeCompare(b.name, 'zh-CN') || a.id.localeCompare(b.id));
     return { classes: auth.classes.map(cls => ({ id: cls._id, name: cls.name || '' })), students: rows };
   }
+  async function feedbackStudents(event, auth) {
+    let classes = auth.classes;
+    if (event.classId !== undefined && event.classId !== '') {
+      const cls = classes.find(row => row._id === event.classId);
+      if (!cls) fail('FORBIDDEN', '无权查看该班级');
+      classes = [cls];
+    }
+    const rows = [];
+    for (const cls of classes) {
+      for (const student of await repo.list('hw_students', { classId: cls._id, isActive: true })) {
+        let childId = null;
+        if (id(student.feedbackChildId)) {
+          const [children, owners] = await Promise.all([
+            repo.list('children', { _id: student.feedbackChildId }),
+            repo.list('hw_students', { feedbackChildId: student.feedbackChildId })
+          ]);
+          if (children.length === 1 && owners.length === 1 && owners[0]._id === student._id) childId = children[0]._id;
+        }
+        rows.push({ _id: childId, homeworkStudentId: student._id, name: student.name || '', class: cls.name || '',
+          classId: cls._id, feedbackLinked: childId !== null,
+          linkMessage: childId ? '' : '请在学生管理中核对并关联家长反馈' });
+      }
+    }
+    rows.sort((a, b) => a.class.localeCompare(b.class, 'zh-CN') || a.name.localeCompare(b.name, 'zh-CN'));
+    return { students: rows };
+  }
   async function saveParent(transaction, student, event, cls) {
-    if (event.parentPhone === undefined) return {};
+    if (event.parentPhone === undefined) {
+      if (student.feedbackChildId) {
+        const [children, owners] = await Promise.all([
+          transaction.list('children', { _id: student.feedbackChildId }),
+          transaction.list('hw_students', { feedbackChildId: student.feedbackChildId })
+        ]);
+        if (children.length !== 1 || owners.some(row => row._id !== student._id)) fail('DATA_CHANGED', '反馈关联异常，请先核对');
+        await transaction.update('children', student.feedbackChildId, {
+          name: event.name === undefined ? student.name : event.name.trim(), class: cls.name
+        });
+      }
+      return {};
+    }
     const parentPhone = String(event.parentPhone).trim();
     if (!/^1\d{10}$/.test(parentPhone)) fail('BAD_REQUEST', '家长手机号无效');
     const child = { name: event.name === undefined ? student.name : event.name.trim(), class: cls.name, parentPhone: Number(parentPhone) };
     let childId = student.feedbackChildId;
-    if (childId) await transaction.update('children', childId, child);
+    if (childId) {
+      const [children, owners] = await Promise.all([
+        transaction.list('children', { _id: childId }), transaction.list('hw_students', { feedbackChildId: childId })
+      ]);
+      if (children.length !== 1 || owners.some(row => row._id !== student._id)) fail('DATA_CHANGED', '反馈关联异常，请先核对');
+      await transaction.update('children', childId, child);
+    }
     else {
       const matches = (await transaction.list('children')).filter(row => String(row.parentPhone) === parentPhone && row.name === child.name);
       if (matches.length) {
@@ -607,6 +652,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
         data = await workspace(event.classId, event.date, auth);
       }
       if (event.action === 'students') data = await students(event, auth);
+      if (event.action === 'feedbackStudents') data = await feedbackStudents(event, auth);
       if (event.action === 'createStudent') data = await createStudent(event, auth);
       if (event.action === 'updateStudent') data = await updateStudent(event, auth);
       if (event.action === 'setStudentActive') data = await setStudentActive(event, auth);
