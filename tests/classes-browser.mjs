@@ -79,7 +79,7 @@ try {
     assert.equal(await evaluate('document.querySelectorAll(".adm-nav-item.active").length'), 1);
     assert.equal(await evaluate('document.querySelector(".adm-nav-item.active")?.getAttribute("href")'), 'students.html');
     assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".adm-nav-item:not(.adm-nav-logout)")).map(node=>node.getAttribute("href"))'),
-      ['dashboard.html', 'students.html', 'report-editor.html', 'mistakes.html', 'homework.html']);
+      ['dashboard.html', 'students.html', 'homework.html']);
     assert.equal(await evaluate('document.getElementById("classDialog").open'), true);
     await evaluate('document.getElementById("cancelButton").click()');
   });

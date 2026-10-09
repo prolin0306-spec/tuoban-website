@@ -110,6 +110,12 @@ try {
   for(const label of ['实际：0','未记录','部分完成','尚未生成计划','预计完成率','实际完成率','优先级：','测试甲班'])assert.ok(body.includes(label));
   assert.equal(await evaluate('document.querySelector(".hw-student").dataset.color'),'green');
  });
+ await check('one homework entry contains all three tools and no seven-day notice', async () => {
+  assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("#sidebarNav .adm-nav-item:not(.adm-nav-logout)")).map(a=>a.getAttribute("href"))'), ['dashboard.html','students.html','homework.html']);
+  assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("#homeworkSectionNav a")).map(a=>a.textContent)'), ['作业清单','每日反馈','错题管理']);
+  assert.equal(await evaluate('document.querySelector("#homeworkSectionNav [aria-current=page]").textContent'), '作业清单');
+  assert.equal(await evaluate('document.body.innerText.includes("前 6 天")'), false);
+ });
  await check('configured warning thresholds and priority reach the page',async()=>{
   data.hw_settings[0].minCompletionRate=0.95;
   data.hw_settings[0].severeCompletionRate=0.85;
@@ -276,7 +282,7 @@ try {
   await openPage('/nav-smoke.html');await until('typeof window.initSidebar==="function"');
   await evaluate('window.adminAuth={logout(){window.oldLogoutCalled=true}};window.initSidebar("dashboard.html")');
   const links=await evaluate('Array.from(document.querySelectorAll("nav a")).map(a=>a.getAttribute("href"))');
-  for(const link of ['dashboard.html','students.html','report-editor.html','mistakes.html','homework.html'])assert.ok(links.includes(link));
+  for(const link of ['dashboard.html','students.html','homework.html'])assert.ok(links.includes(link));
   await evaluate('document.getElementById("btnLogout").click()');assert.equal(await evaluate('window.oldLogoutCalled'),true);
  });
  await check('installed real SDK exposes required auth/call interfaces (no cloud calls)',async()=>{

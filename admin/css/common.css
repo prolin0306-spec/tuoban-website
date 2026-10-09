@@ -490,3 +490,29 @@ a { text-decoration: none; color: inherit; }
     padding: 16px;
   }
 }
+
+/* 作业管理：清单、每日反馈、错题共用一个主导航入口。 */
+.adm-workspace-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.adm-workspace-nav a {
+  min-width: 0;
+  padding: 12px 8px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  text-decoration: none;
+  color: var(--text-light);
+  font-weight: 600;
+}
+.adm-workspace-nav a:hover { background: var(--primary-light); color: var(--primary); }
+.adm-workspace-nav a[aria-current="page"] { background: var(--primary); color: #fff; }
+.adm-workspace-nav a:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 768px) {
+  .adm-workspace-nav { gap: 4px; padding: 10px 12px; }
+  .adm-workspace-nav a { font-size: 14px; padding: 12px 4px; }
+}
