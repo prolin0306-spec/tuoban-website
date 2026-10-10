@@ -158,7 +158,7 @@ test('workspace sorts red, yellow, green, unknown; same color by descending prio
     _id: 's' + i, classId: 'class-a', isActive: true, speedCoefficient
   }));
   d.hw_homework_books = d.hw_students.map(s => ({ _id: 'b' + s._id, studentId: s._id,
-    totalAmount: 100, completedAmount: 0, workloadPerUnit: 1, isActive: true }));
+    totalAmount: 100, completedAmount: 0, workloadPerUnit: 1, isActive: true, assignmentDate: '2026-09-15' }));
   const cards = (await setup(d).handle(request)).data.students;
   assert.deepEqual(cards.map(s => s.id), ['s3', 's2', 's1', 's0', 's4']);
   assert.deepEqual(cards.map(s => s.projection.color), ['red', 'red', 'yellow', 'green', 'unknown']);
@@ -747,7 +747,7 @@ test('concurrent repeated createBookList requests never duplicate a class assign
 
 test('workspace lists uploaded books even without a daily plan, without generating one', async () => {
   const d = fixture(); d.hw_homework_books.push({ _id: 'new-book', studentId: 'student-b', classId: 'class-a',
-    name: '刚上传的整项作业', totalAmount: 8, completedAmount: 0, unit: '题', isActive: true });
+    assignmentDate: '2026-09-15', name: '刚上传的整项作业', totalAmount: 8, completedAmount: 0, unit: '题', isActive: true });
   const before = structuredClone(d), s = setup(d);
   const result = await s.handle({ action: 'workspace', classId: 'class-a', date: '2026-09-15' });
   assert.equal(result.code, 'OK');
@@ -992,4 +992,12 @@ test('feedback roster pagination includes all managed students and preserves rea
   const s=setup(d,{uid:'test-uid',isAnonymous:false},7),before=structuredClone(d);
   assert.equal((await s.handle({action:'feedbackStudents'})).data.students.length,257);
   assert.deepEqual(d,before);assert.equal(s.mock.writes,0);
+});
+
+test('undated legacy books never recur as today assignments, but dated history and actual zero remain readable', async () => {
+ const d=fixture();d.hw_daily_plans=[];d.hw_daily_records=[];const s=setup(d),before=structuredClone(d);
+ let r=await s.handle(request);assert.ok(r.data.students.every(row=>row.registeredBooks.length===0));assert.equal(r.data.summary.registeredBookCount,0);assert.equal(s.mock.writes,0);assert.deepEqual(d,before);
+ d.hw_daily_records.push({_id:'historical-zero',studentId:'student-a',homeworkBookId:'book-a',date:'2026-09-01',actualAmount:0});
+ r=await s.handle({...request,date:'2026-09-01'});assert.equal(r.data.students.find(row=>row.id==='student-a').registeredBooks.length,1);assert.equal(r.data.students.find(row=>row.id==='student-a').tasks[0].actual,0);
+ r=await s.handle(request);assert.ok(r.data.students.every(row=>row.registeredBooks.length===0));assert.equal(s.mock.writes,0);assert.equal(d.hw_homework_books.length,4);
 });

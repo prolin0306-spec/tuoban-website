@@ -84,3 +84,7 @@ node tests/parent-homework-browser.mjs
 部署时需包含新文件 feedback.js，仍只更新 webHomework 函数代码；webParentHomework 无变化。服务账号须具有既有数据库事务和云存储上传、临时 URL 权限。不要运行初始化或迁移脚本。数据库规则应禁止浏览器直接写 daily_reports、mistakes、children、hw_* 及 integration_teacher_links；家长当前仍直接读取原 children、daily_reports、mistakes，收紧读取规则前必须另做家长认证/API 迁移，不能一刀切关闭使家长端失效。本轮没有核验或修改生产规则，不能把代码发布理解为旧公开读取权限已经修复。
 
 回滚：从前一提交 2064930 提取 webHomework 原 8 个部署文件做代码回滚，前端另建回滚提交正常发布，不重置或删除数据库记录。本轮新保存的日报与错题沿用原字段，旧版家长页面仍可读取。
+
+## 日期归属修复
+
+没有 assignmentDate 不代表长期、每天重复的作业。列表只显示 assignmentDate 与查询日期一致的作业，以及没有登记日期但在查询日期存在计划或实际记录的旧作业；原始旧数据不补日期、不删除。老师端与家长端采用同一规则。所有网页新增作业入口写入当天 assignmentDate；查询仍是零写入。无当日数据时不显示由旧作业计算的进度/完成率或生成计划按钮。

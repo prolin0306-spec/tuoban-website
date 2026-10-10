@@ -117,6 +117,18 @@ try {
 
   assert.equal(await evaluate('document.body.innerText.includes("前 6 天")'), false);
  });
+ await check('no today input hides old undated books and misleading completion metrics without deleting history',async()=>{
+  const plans=structuredClone(data.hw_daily_plans),records=structuredClone(data.hw_daily_records),books=structuredClone(data.hw_homework_books);
+  data.hw_daily_plans=[];data.hw_daily_records=[];const writes=mock.writes;
+  await evaluate('document.getElementById("refreshButton").click()');
+  await until('document.querySelectorAll(".hw-student").length===2 && document.body.textContent.includes("所选日期尚未录入作业")');
+  assert.equal(await evaluate('document.querySelectorAll(".hw-registered [data-book-id]").length'),0);
+  assert.equal(await evaluate('document.querySelectorAll(".hw-metrics").length'),0);
+  assert.equal(await evaluate('document.querySelectorAll(".hw-generate").length'),0);
+  assert.deepEqual(data.hw_homework_books,books);assert.equal(mock.writes,writes);
+  data.hw_daily_plans=plans;data.hw_daily_records=records;
+  await evaluate('document.getElementById("refreshButton").click()');await until('document.querySelectorAll(".hw-metrics").length===2');
+ });
  await check('configured warning thresholds and priority reach the page',async()=>{
   data.hw_settings[0].minCompletionRate=0.95;
   data.hw_settings[0].severeCompletionRate=0.85;

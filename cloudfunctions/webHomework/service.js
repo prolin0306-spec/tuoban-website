@@ -377,7 +377,11 @@ function createService({ repo, identity, environmentId, storage, now = () => new
       const records = allRecords.filter(record => record.date === date);
       const bookMap = new Map(books.map(book => [book._id, book]));
       const protectedBooks = new Set([...allPlans, ...allRecords].map(row => row.homeworkBookId));
-      const registeredBooks = books.filter(book => book.isActive === true && (!book.assignmentDate || book.assignmentDate === date)).map(book => {
+      const datedActivity = new Set([...plans, ...records].map(row => row.homeworkBookId));
+      // Missing assignmentDate is unknown history, not a daily recurring assignment.
+      const visibleBooks = books.filter(book => book.isActive === true &&
+        (book.assignmentDate === date || (!book.assignmentDate && datedActivity.has(book._id))));
+      const registeredBooks = visibleBooks.map(book => {
         const total = numeric(book.totalAmount) && book.totalAmount > 0 ? book.totalAmount : null;
         const completed = numeric(book.completedAmount) && book.completedAmount >= 0 ? book.completedAmount : null;
         const valid = total !== null && completed !== null && completed <= total;
@@ -419,7 +423,7 @@ function createService({ repo, identity, environmentId, storage, now = () => new
       totalPlannedWorkload += plannedWorkload; totalCompletedWorkload += completedWorkload;
       const completionRate = plannedWorkload > 0 ? completedWorkload / plannedWorkload : 0;
       const actualRate = !incompleteRecords && plannedWorkload > 0 ? actualWorkload / plannedWorkload : null;
-      const projection = project(student, books.filter(book => book.isActive === true && (!book.assignmentDate || book.assignmentDate === date)), settingsRows[0], date, shanghaiDate(now()));
+      const projection = project(student, visibleBooks, settingsRows[0], date, shanghaiDate(now()));
       const actualRateReason = !plans.length ? '尚未生成计划' : !records.length ? '未记录' :
         tasks.some(task => task.hasPlan && task.status === 'unrecorded') ? '部分任务未记录，无法计算完整完成率' : '计划、实际记录或单位负载不足，无法计算';
       cards.push({ id: student._id, name: student.name || '', grade: student.grade || '',
@@ -444,7 +448,7 @@ function createService({ repo, identity, environmentId, storage, now = () => new
     return repo.runTransaction(async transaction => {
       const student = await resolveStudent(event.studentId, auth, transaction);
       const book = { studentId: student._id, classId: student.classId, subject, name, totalAmount,
-        workloadPerUnit, unit, completedAmount: 0, isActive: true, createdAt, updatedAt: createdAt };
+        workloadPerUnit, unit, completedAmount: 0, isActive: true, assignmentDate: shanghaiDate(createdAt), createdAt, updatedAt: createdAt };
       const bookId = await transaction.add('hw_homework_books', book);
       return { id: bookId, book: { ...book, _id: bookId }, planGenerated: false };
     });
@@ -467,7 +471,7 @@ function createService({ repo, identity, environmentId, storage, now = () => new
         const bookId = stableId('webbatchbook', event.requestId, student._id);
         const book = { studentId: student._id, classId: cls._id, subject, name, totalAmount,
           workloadPerUnit, unit, completedAmount: 0, isActive: true, batchId: event.requestId,
-          createdAt, updatedAt: createdAt };
+          assignmentDate: shanghaiDate(createdAt), createdAt, updatedAt: createdAt };
         const existing = await transaction.list('hw_homework_books', { _id: bookId });
         if (existing.length) {
           const row = existing[0], same = ['studentId', 'classId', 'subject', 'name', 'totalAmount', 'workloadPerUnit', 'unit', 'batchId']

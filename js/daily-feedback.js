@@ -140,9 +140,9 @@
       homeworkCaption.textContent = '该学生已停用；已有每日反馈和错题记录继续保留。';
       return;
     }
-    homeworkCaption.textContent = `与老师作业管理同步：${data.date || '今天'}的日作业及长期作业；实际完成量以老师录入为准。`;
+    homeworkCaption.textContent = `与老师作业管理同步：${data.date || '今天'}的登记作业及当日有计划或实际记录的作业；实际完成量以老师录入为准。`;
     if (!Array.isArray(data.books) || !data.books.length) {
-      homeworkList.append(homeworkLine('p', '暂无登记的作业。'));
+      homeworkList.append(homeworkLine('p', '今天尚未登记作业，也没有当日计划或实际记录。'));
       return;
     }
     for (const book of data.books) {

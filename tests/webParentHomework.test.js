@@ -16,6 +16,7 @@ const request = { action: 'summary', childId: 'feedback-child-a', phone: '138000
 test('parent summary reads only explicitly linked child and keeps zero distinct from missing record', async () => {
   const { data, mock, handle } = setup();
   data.hw_students[0].feedbackChildId = 'feedback-child-a';
+  data.hw_homework_books.forEach(book => { book.assignmentDate='2026-09-16'; });
   const result = await handle(request);
   assert.equal(result.code, 'OK');
   assert.equal(result.data.date, '2026-09-16');
@@ -30,6 +31,7 @@ test('parent summary reads only explicitly linked child and keeps zero distinct 
 test('daily plan and actual are for Shanghai date; recorded zero is preserved', async () => {
   const { data, handle } = setup();
   data.hw_students[0].feedbackChildId = 'feedback-child-a';
+  data.hw_homework_books.forEach(book => { book.assignmentDate='2026-09-16'; });
   data.hw_daily_plans[0].date = '2026-09-16';
   data.hw_daily_records[0].date = '2026-09-16';
   data.hw_daily_records[0].actualAmount = 0;
@@ -76,7 +78,7 @@ test('identity is required; Shanghai date uses China day boundary', async () => 
   assert.equal(shanghaiToday(new Date('2026-09-15T16:00:00Z')), '2026-09-16');
 });
 
-test('parent homework follows current student profile and shows only today daily assignments plus active long-term books', async () => {
+test('parent homework follows current student profile and does not treat undated old books as recurring assignments', async () => {
   const {data,mock,handle}=setup();data.hw_students[0].feedbackChildId='feedback-child-a';
   data.hw_students[0].name='更新后的测试姓名';data.hw_classes[0].name='更新后的测试班级';
   data.hw_homework_books.push(...['2026-09-07','2026-09-16','2026-09-17'].map(date=>({_id:'daily-'+date,studentId:'student-a',name:date,assignmentDate:date,totalAmount:1,completedAmount:0,isActive:true})));
@@ -85,11 +87,18 @@ test('parent homework follows current student profile and shows only today daily
   assert.equal(result.code,'OK');assert.equal(result.data.student.name,'更新后的测试姓名');assert.equal(result.data.student.className,'更新后的测试班级');
   const names=result.data.books.map(row=>row.name);assert.ok(names.includes('2026-09-16'));
   for(const name of ['2026-09-07','2026-09-17','已停用作业'])assert.ok(!names.includes(name));
-  assert.equal(result.data.books.length,4);assert.deepEqual(data,before);assert.equal(mock.writes,0);
+  assert.equal(result.data.books.length,1);assert.deepEqual(data,before);assert.equal(mock.writes,0);
 });
 test('disabled parent-linked student retains history but no longer displays active homework', async () => {
   const {data,mock,handle}=setup();data.hw_students[0].feedbackChildId='feedback-child-a';data.hw_students[0].isActive=false;
   const before=structuredClone(data),result=await handle(request);
   assert.equal(result.code,'OK');assert.equal(result.data.linked,true);assert.equal(result.data.isActive,false);assert.deepEqual(result.data.books,[]);
   assert.deepEqual(data,before);assert.equal(mock.writes,0);
+});
+
+test('parent with no today assignment, plan or record sees no old undated books; storage stays unchanged',async()=>{
+ const {data,mock,handle}=setup();data.hw_students[0].feedbackChildId='feedback-child-a';const before=structuredClone(data);
+ assert.deepEqual((await handle(request)).data.books,[]);assert.deepEqual(data,before);assert.equal(mock.writes,0);
+ data.hw_daily_records[0].date='2026-09-16';data.hw_daily_records[0].actualAmount=0;
+ const result=await handle(request);assert.equal(result.data.books.length,1);assert.equal(result.data.books[0].todayActualAmount,0);assert.equal(mock.writes,0);
 });

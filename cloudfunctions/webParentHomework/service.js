@@ -37,7 +37,9 @@ function createService({ repo, identity, now = () => new Date() }) {
         repo.list('hw_daily_plans', { studentId, date }),
         repo.list('hw_daily_records', { studentId, date })
       ]);
-      const validBooks = books.filter(book => book.studentId === studentId && book.isActive !== false && (!book.assignmentDate || book.assignmentDate === date));
+      const datedActivity = new Set([...plans, ...records].filter(row => row.studentId === studentId && row.date === date).map(row => row.homeworkBookId));
+      const validBooks = books.filter(book => book.studentId === studentId && book.isActive !== false &&
+        (book.assignmentDate === date || (!book.assignmentDate && datedActivity.has(book._id))));
       const bookIds = new Set(validBooks.map(book => book._id));
       const planByBook = new Map(plans.filter(plan => plan.studentId === studentId && plan.date === date && bookIds.has(plan.homeworkBookId))
         .map(plan => [plan.homeworkBookId, plan]));

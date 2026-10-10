@@ -155,17 +155,18 @@
       metrics.append(element('p', `实际完成率（按负载）：${finite(student.actualRate) ? percent(student.actualRate) : student.actualRateReason || '数据不足'}`));
       if (!finite(rate)) metrics.append(element('p', student.projection && student.projection.reason || '预测信息不足', 'hw-muted'));
       for (const alert of student.projection && student.projection.alerts || []) metrics.append(element('p', alert.message, 'hw-alert'));
-      card.append(metrics);
+      if ((student.registeredBooks || []).length || student.tasks.length) card.append(metrics);
+      else card.append(element('p', '所选日期尚未录入作业', 'hw-notice'));
       const registered = element('section', undefined, 'hw-registered');
-      registered.append(element('h3', `已登记作业（${(student.registeredBooks || []).length}）`));
+      registered.append(element('h3', `该日期作业（${(student.registeredBooks || []).length}）`));
       registered.append(element('p', '整项勾选只更新作业本完成量，不生成每日计划或记录。', 'hw-muted'));
       const registeredList = element('ul');
       for (const book of student.registeredBooks || []) registeredList.append(registeredBookRow(student, book, data.date, data.today));
-      if (!registeredList.children.length) registeredList.append(element('li', '尚未登记作业', 'hw-muted'));
+      if (!registeredList.children.length) registeredList.append(element('li', '该日期暂无登记作业', 'hw-muted'));
       registered.append(registeredList); card.append(registered);
       if (!student.hasPlan) {
         card.append(element('p', '尚未生成计划', 'hw-notice'));
-        if (data.date === data.today) {
+        if (data.date === data.today && (student.registeredBooks || []).length) {
           const generate = element('button', '生成今日计划', 'adm-btn adm-btn-primary hw-generate'); generate.type = 'button';
           generate.addEventListener('click', () => runAction(generate, () => api.generateTodayPlan(student.id), result =>
             result.plansGenerated ? `已为 ${student.name || '该学生'} 生成 ${result.plansGenerated} 项今日计划` : '没有需要生成的剩余作业'));
