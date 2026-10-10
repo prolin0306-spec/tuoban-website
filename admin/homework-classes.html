@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
   <title>班级管理 — 老师后台</title>
-  <link rel="stylesheet" href="css/common.css?v=workspace-navigation-1">
-  <link rel="stylesheet" href="css/homework.css">
-  <link rel="stylesheet" href="css/homework-classes.css">
+  <link rel="stylesheet" href="css/common.css?v=integrated-1">
+  <link rel="stylesheet" href="css/homework.css?v=integrated-1">
+  <link rel="stylesheet" href="css/homework-classes.css?v=integrated-1">
 </head>
 <body class="adm-layout">
   <aside class="adm-sidebar" id="sidebar">
@@ -24,17 +24,7 @@
         <div><p><a href="students.html">学生管理</a> › 班级管理</p><h1>班级管理</h1><p>管理作业系统使用的班级。停用全部学生后即可停用班级，历史数据不会删除。</p></div>
 
       </div>
-      <section class="adm-card hw-login" id="loginPanel" hidden>
-        <h2>验证作业访问权限</h2>
-        <p>请输入已开通作业权限的账号。班级操作会按小程序角色规则校验。</p>
-        <form id="homeworkLogin">
-          <label class="adm-form-label" for="homeworkUsername">作业访问账号</label>
-          <input class="adm-form-input" id="homeworkUsername" autocomplete="username" required maxlength="128">
-          <label class="adm-form-label" for="homeworkPassword">密码</label>
-          <input class="adm-form-input" id="homeworkPassword" type="password" autocomplete="current-password" required>
-          <button class="adm-btn adm-btn-primary" id="loginButton" type="submit">验证并进入</button>
-        </form>
-      </section>
+      <section class="adm-card hw-login" id="loginPanel" hidden><h2>请登录老师后台</h2><p>老师与管理员使用同一账号入口，无需再次验证。</p><a class="adm-btn adm-btn-primary" href="login.html?next=homework-classes.html">前往统一登录</a></section>
       <div id="classStatus" role="status" aria-live="polite"></div>
       <button id="retryButton" class="adm-btn adm-btn-secondary" hidden>重新加载</button>
       <section id="classPanel" hidden>
@@ -57,9 +47,10 @@
     </form>
   </dialog>
   <script src="../js/cloudbase-v3.10.0.full.min.js"></script>
-  <script src="js/homework-config.js"></script>
-  <script src="js/homework-api.js?v=student-roster-1"></script>
-  <script src="js/common.js?v=workspace-navigation-1"></script>
-  <script src="js/homework-classes.js"></script>
+  <script src="js/homework-config.js?v=integrated-1"></script>
+  <script src="js/homework-api.js?v=integrated-1"></script>
+  <script src="js/auth.js?v=integrated-1"></script>
+  <script src="js/common.js?v=integrated-1"></script>
+  <script src="js/homework-classes.js?v=integrated-1"></script>
 </body>
 </html>

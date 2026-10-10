@@ -1,4 +1,4 @@
-// Local-only unified homework navigation test. All data and API responses are invented.
+// End-to-end local integration only. The teacher and parent share one fictional database.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
@@ -6,36 +6,39 @@ import { readFile } from 'node:fs/promises';
 import { createBrowserProfile, stopBrowser } from './helpers/browser-profile.mjs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-const site = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-// Fictional in-browser API only. The production SDK and auth scripts are never executed.
-const stub = `window.adminReady=true;
-window.__fixture={reports:[],mistakes:[],uploads:0,loggedOut:false,legacyRosterReads:0,roster:[{_id:'fixture-child',homeworkStudentId:'fixture-hw-student',name:'虚构学生',class:'测试班级',feedbackLinked:true}]};
-window.adminAuth={check:()=>({name:'测试老师'}),logout:()=>{window.__fixture.loggedOut=true}};
-const pupil={_id:'fixture-child',name:'虚构学生',class:'测试班级'};
-window.adminAPI={today:()=> '2026-10-09',getStudents:async()=>{window.__fixture.legacyRosterReads++;return[pupil]},getStudent:async()=>pupil,getReport:async()=>null,
-saveReport:async value=>{window.__fixture.reports.push(value)},getMistakes:async()=>window.__fixture.mistakes,
-uploadMistakeImage:async file=>{if(!file)throw Error('Missing test image');window.__fixture.uploads++;return{fileID:'fixture-image'}},
-saveMistake:async value=>{window.__fixture.mistakes.push({...value,_id:'fixture-mistake',date:'2026-10-09'})},
-getMistakeImageURL:async()=> 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',
-deleteMistake:async()=>{throw Error('No deletion expected')}};`;
-const modernStub = `window.cloudbase={init(){return{auth:{signInWithPassword:async()=>({}),signOut:async()=>({}),getSession:async()=>({data:{session:{sub:'fixture-teacher'}}})},
-callFunction:async request=>({result:{code:'OK',data:request.data.action==='feedbackStudents'?{students:window.__fixture.roster}:request.data.action==='session'?{teacher:{name:'测试老师'}}:[]}})}}};`;
-const allowed = new Set(['/admin/report-editor.html','/admin/mistakes.html','/admin/homework.html',
- '/admin/css/common.css','/admin/css/homework.css','/admin/js/common.js','/admin/js/homework.js','/admin/js/homework-api.js','/admin/js/feedback-roster.js']);
-const server = http.createServer(async (req, res) => {
-  try {
-    const pathname = new URL(req.url, 'http://localhost').pathname;
-    if (pathname === '/js/cloudbase-v3.10.0.full.min.js') { res.setHeader('Content-Type','text/javascript');res.end(modernStub);return; }
-    if (['/js/cloudbase.full.min.js','/admin/js/cloudbase.js','/admin/js/auth.js'].includes(pathname)) {
-      res.setHeader('Content-Type','text/javascript');res.end('/* SDK disabled in local test */');return;
-    }
-    if (pathname === '/admin/js/api.js') { res.setHeader('Content-Type','text/javascript');res.end(stub);return; }
-    if (pathname === '/admin/js/homework-config.js') { res.setHeader('Content-Type','text/javascript');res.end('window.HOMEWORK_CONFIG={enabled:true,envId:"fixture-env",functionName:"webHomework"}');return; }
-    if (!allowed.has(pathname)) { res.writeHead(404); res.end(); return; }
-    res.setHeader('Content-Type', pathname.endsWith('.js') ? 'text/javascript' : pathname.endsWith('.css') ? 'text/css' : 'text/html; charset=utf-8');
-    res.end(await readFile(join(site, pathname)));
-  } catch (_) { res.writeHead(500); res.end('Test server failed'); }
-});
+import { createRequire } from 'node:module';
+const require=createRequire(import.meta.url),site=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const {fixture,mockDatabase}=require('./helpers/homework-fixture');
+const {createService}=require('../cloudfunctions/webHomework/service');
+const {createRepository}=require('../cloudfunctions/webHomework/repository');
+const parentService=require('../cloudfunctions/webParentHomework/service').createService;
+const parentRepo=require('../cloudfunctions/webParentHomework/repository').createRepository;
+const data=fixture(),today=new Date(Date.now()+8*3600000).toISOString().slice(0,10);
+const offset=days=>new Date(Date.parse(today+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
+data.hw_settings[0].termStartDate=offset(-30);data.hw_settings[0].termEndDate=offset(30);
+for(const row of [...data.hw_daily_plans,...data.hw_daily_records])row.date=today;
+data.hw_students[0].feedbackChildId='feedback-child-a';data.daily_reports=[];data.mistakes=[];
+const mock=mockDatabase(data);let authenticated=false;
+const teacher=createService({repo:createRepository(mock.db),identity:async()=>authenticated?{uid:'test-uid',isAnonymous:false}:null,environmentId:'test-env',storage:{upload:async()=> 'cloud://fixture/new.png',urls:async ids=>Object.fromEntries(ids.map(id=>[id,'https://images.example.test/new.png']))}});
+const parent=parentService({repo:parentRepo(mock.db),identity:async()=>({uid:'fixture-parent'})});
+const modern=`window.cloudbase={init(){return{auth:{getSession:async()=>({data:{session:sessionStorage.getItem('mock-session')?{sub:'test-uid'}:null}}),signInWithPassword:async v=>{if(v.password!=='fictional-pass')return{error:{message:'invalid'}};await fetch('/__login',{method:'POST'});sessionStorage.setItem('mock-session','yes');return{data:{}}},signInAnonymously:async()=>{sessionStorage.setItem('anonymous-called','yes');return{data:{}}},signOut:async()=>{await fetch('/__logout',{method:'POST'});sessionStorage.removeItem('mock-session');return{data:{}}}},callFunction:async req=>({result:await(await fetch(req.name==='webHomework'?'/__teacher':'/__parent',{method:'POST',body:JSON.stringify(req.data)})).json()})}}};`;
+const legacy=`window.cloudbase={init(){return{auth:()=>({currentUser:{uid:'fixture-parent'},signInAnonymously:async()=>({})}),database:()=>({collection(name){return{where(query){return{orderBy(){return this},get:async()=>({data:await(await fetch('/__db',{method:'POST',body:JSON.stringify({name,query})})).json()})}}}}}),getTempFileURL:async()=>({fileList:[{tempFileURL:'https://images.example.test/new.png'}]})}}};`;
+const allowed=new Set(['/admin/login.html','/admin/homework.html','/admin/dashboard.html','/admin/report-editor.html','/admin/mistakes.html','/admin/students.html','/admin/homework-classes.html','/daily-feedback.html','/css/style.css','/css/daily-feedback.css','/js/daily-feedback.js']);
+const server=http.createServer(async(req,res)=>{try{
+ const pathname=new URL(req.url,'http://localhost').pathname;let body='';
+ if(pathname.startsWith('/__')){
+  for await(const chunk of req)body+=chunk;const input=body?JSON.parse(body):{};res.setHeader('Content-Type','application/json');
+  if(pathname==='/__login'){authenticated=true;res.end('{}');return;}if(pathname==='/__logout'){authenticated=false;res.end('{}');return;}
+  if(pathname==='/__teacher'){res.end(JSON.stringify(await teacher(input)));return;}if(pathname==='/__parent'){res.end(JSON.stringify(await parent(input)));return;}
+  if(pathname==='/__db'&&['children','daily_reports','mistakes'].includes(input.name)){res.end(JSON.stringify((data[input.name]||[]).filter(row=>Object.entries(input.query).every(([k,v])=>row[k]===v)).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))));return;}
+  res.writeHead(404);res.end();return;
+ }
+ if(pathname==='/js/cloudbase-v3.10.0.full.min.js'){res.setHeader('Content-Type','text/javascript');res.end(modern);return;}
+ if(pathname==='/js/cloudbase.full.min.js'){res.setHeader('Content-Type','text/javascript');res.end(legacy);return;}
+ if(pathname==='/admin/js/homework-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.HOMEWORK_CONFIG={enabled:true,envId:"test-env",functionName:"webHomework"};');return;}
+ if(!allowed.has(pathname)&&!/^\/admin\/(js|css)\/[a-z-]+\.(js|css)$/.test(pathname)){res.writeHead(404);res.end();return;}
+ res.setHeader('Content-Type',pathname.endsWith('.js')?'text/javascript':pathname.endsWith('.css')?'text/css':'text/html; charset=utf-8');res.end(await readFile(join(site,pathname)));
+}catch(_){res.writeHead(500);res.end('Test fixture failed');}});
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = 'http://127.0.0.1:' + server.address().port;
 const browserProfile = await createBrowserProfile(), profile = browserProfile.path;
@@ -63,7 +66,7 @@ async function until(expression) {
 }
 try {
   let port;
-  for (let i = 0; i < 500; i++) { try { port = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).trim().split('\n'); break; } catch (_) { await delay(40); } }
+  for (let i = 0; i < 150; i++) { try { port = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).trim().split('\n'); break; } catch (_) { await delay(40); } }
   if (!port) throw new Error('Chrome failed to start');
   socket = new WebSocket('ws://127.0.0.1:' + port[0] + port[1]);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
@@ -84,70 +87,53 @@ try {
   sessionId = attached.sessionId;
   await send('Runtime.enable'); await send('Page.enable');
   await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
-  await send('Page.navigate', { url: origin + '/admin/report-editor.html' });
-  await until('document.querySelector(".adm-student-actions a")');
-  assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("#sidebarNav .adm-nav-item:not(.adm-nav-logout)")).map(a=>a.textContent.trim())'), ['仪表盘','学生管理','作业管理']);
-  assert.equal(await evaluate('document.querySelector("#sidebarNav .active").getAttribute("href")'), 'homework.html');
-  assert.equal(await evaluate('document.querySelector("#homeworkSectionNav [aria-current=page]").textContent'), '每日反馈');
-  await evaluate('window.initSidebar("report-editor.html");window.initSidebar("report-editor.html")');
-  assert.equal(await evaluate('document.querySelectorAll("#homeworkSectionNav").length'),1);
-  console.log('PASS feedback belongs to homework and repeated navigation rendering stays unique');
-  await evaluate('document.querySelector(".adm-student-actions a").click()');
-  await until('document.getElementById("btnSave")');
-  assert.equal(await evaluate('document.querySelector("#homeworkSectionNav [aria-current=page]").textContent'), '每日反馈');
-  await evaluate('document.getElementById("learning").value="模拟学习反馈";document.getElementById("btnSave").click()');
-  await until('window.__fixture.reports.length===1 && !document.getElementById("btnSave").disabled');
-  assert.equal(await evaluate('window.__fixture.reports[0].childId'),'fixture-child');
-  assert.equal(await evaluate('window.__fixture.reports[0].learning'),'模拟学习反馈');
-  console.log('PASS selecting a student and saving daily feedback still works');
-  assert.equal(await evaluate('window.__fixture.legacyRosterReads'),0);
-  await evaluate('window.__fixture.roster[0].name="更新后的学生";document.getElementById("refreshFeedbackStudents").click()');
-  await until('document.querySelector(".adm-report-meta").textContent.includes("更新后的学生")');
-  assert.equal(await evaluate('document.getElementById("learning").value'),'模拟学习反馈');
-  await evaluate('window.__fixture.roster=[];document.getElementById("refreshFeedbackStudents").click()');
-  await until('document.getElementById("editorContent").textContent.includes("已停用")');
-  assert.equal(await evaluate('document.getElementById("btnSave")'),null);
-  console.log('PASS feedback refresh follows rename and disable without erasing an active draft');
-
-  await evaluate('document.querySelectorAll("#homeworkSectionNav a")[2].click()');
-  await until('document.getElementById("mistakeStudent")?.options.length===2');
-  assert.equal(await evaluate('document.querySelector("#sidebarNav .active").getAttribute("href")'),'homework.html');
-  assert.equal(await evaluate('document.querySelector("#homeworkSectionNav [aria-current=page]").textContent'),'错题管理');
-  assert.equal(await evaluate('window.__fixture.uploads'),0);
-  await evaluate(`document.getElementById('mistakeStudent').value='fixture-child';
-    document.getElementById('mistakeNote').value='模拟错题';
-    const transfer=new DataTransfer();transfer.items.add(new File(['test image'],'fixture.png',{type:'image/png'}));
-    document.getElementById('mistakeImage').files=transfer.files;document.getElementById('btnUpload').click()`);
-  await until('window.__fixture.mistakes.length===1 && document.getElementById("mistakesList").textContent.includes("模拟错题")');
-  assert.equal(await evaluate('window.__fixture.uploads'),1);
-  assert.equal(await evaluate('window.__fixture.mistakes[0].childId'),'fixture-child');
-  console.log('PASS mistakes tab preserves upload and record display using fictional data');
-  await evaluate('window.__fixture.roster.push({_id:null,homeworkStudentId:"new-unlinked",name:"新建待关联",class:"测试班级",feedbackLinked:false});document.getElementById("refreshFeedbackStudents").click()');
-  await until('document.getElementById("mistakeStudent").options.length===3');
-  assert.equal(await evaluate('document.getElementById("mistakeStudent").options[2].disabled'),true);
-  await until('document.getElementById("mistakesList").textContent.includes("模拟错题")');
-  await evaluate('window.__fixture.roster=window.__fixture.roster.slice(1);document.getElementById("refreshFeedbackStudents").click()');
-  await until('document.getElementById("mistakeStudent").options.length===2');
-  assert.equal(await evaluate('document.getElementById("mistakeStudent").value'),'');
-  await until('!document.getElementById("mistakesList").textContent.includes("模拟错题")');
-  assert.equal(await evaluate('window.__fixture.legacyRosterReads'),0);
-  console.log('PASS mistakes refresh follows new and disabled students with unlinked records blocked');
-
-  for (const width of [375,1280]) {
-    await send('Emulation.setDeviceMetricsOverride',{width,height:850,deviceScaleFactor:1,mobile:width<500});
-    assert.equal(await evaluate('document.documentElement.scrollWidth<=window.innerWidth'),true);
-    assert.equal(await evaluate('Array.from(document.querySelectorAll("#homeworkSectionNav a")).every(a=>a.getBoundingClientRect().width>70 && a.getBoundingClientRect().height>=44)'),true);
-  }
-  console.log('PASS all three module links fit mobile and desktop layouts');
-  await evaluate('document.querySelectorAll("#homeworkSectionNav a")[0].click()');
-  await until('document.querySelector("#homeworkSectionNav [aria-current=page]")?.textContent==="作业清单"');
-  assert.equal(await evaluate('document.querySelector("#sidebarNav .active").getAttribute("href")'),'homework.html');
-  await evaluate('document.querySelectorAll("#homeworkSectionNav a")[1].click()');
-  await until('document.querySelector(".adm-student-actions a")');
+  await send('Page.navigate',{url:origin+'/admin/homework.html'});
+  await until('document.getElementById("loginPanel")?.hidden===false');
+  await evaluate('sessionStorage.setItem("admin_teacher",JSON.stringify({id:"forged",role:"boss"}))');
+  assert.equal(await evaluate('document.querySelectorAll(".hw-student").length'),0);
+  await send('Page.navigate',{url:origin+'/admin/login.html?next=https://untrusted.example.test/'});
+  await until('document.getElementById("adminLogin") && window.adminAuth');
+  assert.equal(await evaluate('window.adminAuth.destination("https://untrusted.example.test/")'),'homework.html');
+  await evaluate('document.getElementById("username").value="fixture-teacher";document.getElementById("password").value="fictional-pass";document.getElementById("adminLogin").requestSubmit()');
+  await until('document.querySelectorAll(".hw-student").length===2');
+  assert.equal(await evaluate('location.pathname'),'/admin/homework.html');
+  assert.equal(await evaluate('sessionStorage.getItem("admin_teacher")'),null);
+  assert.equal(await evaluate('document.getElementById("homeworkSectionNav")'),null);
+  console.log('PASS one platform login; forged legacy cache and external redirects rejected');
+  await evaluate('document.querySelector("[data-student-id=student-a]").open=true;document.querySelector("[data-feedback-student=student-a]").open=true');
+  await until('document.querySelector("[data-feedback-form=student-a]")');
+  await evaluate(`{const form=document.querySelector('[data-feedback-form=student-a]');form.elements.learning.value='虚构同步学习内容 <img src=x onerror=alert(1)>';form.elements.remarks.value='家长可见的虚构评语';form.dispatchEvent(new Event('input',{bubbles:true}));}`);
+  await evaluate('document.getElementById("refreshButton").click()');
+  await until('document.querySelector("[data-feedback-form=student-a] textarea[name=remarks]")?.value==="家长可见的虚构评语"');
+  await evaluate('document.querySelector("[data-feedback-form=student-a]").requestSubmit()');
+  await until('document.body.textContent.includes("已保存，家长端可查询本次反馈")');
+  assert.equal(data.daily_reports.length,1);assert.equal(data.daily_reports[0].childId,'feedback-child-a');
+  console.log('PASS in-card feedback saves original parent collection and preserves drafts on refresh');
+  await evaluate(`{const form=document.querySelector('[data-mistake-form=student-a]');const transfer=new DataTransfer();transfer.items.add(new File([new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,0])],'fixture.png',{type:'image/png'}));form.querySelector('input').files=transfer.files;form.elements.note.value='虚构同步错题';form.requestSubmit();}`);
+  await until('document.body.textContent.includes("错题已保存，家长端可查询")');
+  assert.equal(data.mistakes.length,1);assert.equal(data.mistakes[0].childId,'feedback-child-a');
+  for(const width of [375,1280]){await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<500});assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);}
+  console.log('PASS in-card photo upload and desktop/mobile layouts');
+  const before=structuredClone(data),writes=mock.writes;
+  await send('Page.navigate',{url:origin+'/daily-feedback.html'});
+  await until('document.getElementById("queryBtn") && window.cloudbase');
+  await evaluate('document.getElementById("phoneInput").value="13800000001";document.getElementById("queryBtn").click()');
+  await until('document.body.textContent.includes("家长可见的虚构评语") && document.body.textContent.includes("虚构同步错题")');
+  assert.equal(await evaluate('document.querySelectorAll("#reportSection img[src=x]").length'),0);
+  assert.equal(await evaluate('sessionStorage.getItem("anonymous-called")'),null);
+  assert.equal(mock.writes,writes);assert.deepEqual(data,before);
+  console.log('PASS parent reads teacher-saved feedback/mistake without writes or replacing teacher session');
+  await send('Page.navigate',{url:origin+'/admin/report-editor.html?childId=feedback-child-a'});
+  await until('location.pathname==="/admin/homework.html" && document.querySelector("[data-feedback-form=student-a]")');
+  await send('Page.navigate',{url:origin+'/admin/dashboard.html'});
+  await until('document.getElementById("dashboardLinks")?.hidden===false');
+  assert.equal(await evaluate('document.querySelectorAll("#sidebarNav .adm-nav-item:not(.adm-nav-logout)").length'),3);
+  assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("#statsGrid strong")).map(node=>node.textContent)'),['2','1','1']);
   await evaluate('document.getElementById("btnLogout").click()');
-  assert.equal(await evaluate('window.__fixture.loggedOut'),true);
-  console.log('PASS module navigation returns to homework and legacy logout remains available');
-  console.log('RESULT 7 unified homework browser checks passed; only fictional data used');
+  await until('location.pathname==="/admin/login.html" && document.getElementById("adminLogin")');
+  assert.equal(authenticated,false);assert.equal(await evaluate('sessionStorage.getItem("mock-session")'),null);
+  console.log('PASS old links open integrated cards; dashboard shares login and logout');
+  console.log('RESULT 5 integrated workflow browser checks passed, all data fictional');
 } finally {
   for (const task of pending.values()) clearTimeout(task.timer);
   if (socket) socket.close();

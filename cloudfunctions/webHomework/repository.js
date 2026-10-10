@@ -2,6 +2,8 @@
 const { fail } = require('./errors');
 // Read projections deliberately exclude credentials and contact details.
 const FIELDS = Object.freeze({
+  daily_reports: ['_id','childId','date','attendance','meal','learning','behavior','remarks','createdAt','updatedAt'],
+  mistakes: ['_id','childId','date','subject','note','imageFileID','createdAt','updatedAt'],
   integration_teacher_links: ['_id', 'authUid', 'authEnvId', 'homeworkEnvId', 'homeworkTeacherId', 'status'],
   hw_teachers: ['_id', 'name', 'role', 'classIds', 'isActive', 'updatedAt'],
   hw_classes: ['_id', 'name', 'grade', 'teacherIds', 'substituteTeacherId', 'studentCount', 'isActive', 'createdAt', 'updatedAt', 'operatorTeacherId'],
@@ -13,6 +15,8 @@ const FIELDS = Object.freeze({
   hw_settings: ['_id', 'termStartDate', 'termEndDate', 'workDays', 'holidays', 'dailyCapacity', 'minCompletionRate', 'severeCompletionRate']
 });
 const WRITES = Object.freeze({
+  daily_reports: new Set(['childId','date','attendance','meal','learning','behavior','remarks','createdAt','updatedAt']),
+  mistakes: new Set(['childId','date','subject','note','imageFileID','createdAt','updatedAt']),
   children: new Set(['name', 'class', 'parentPhone']),
   hw_teachers: new Set(['classIds', 'updatedAt']),
   hw_classes: new Set(['name', 'grade', 'teacherIds', 'substituteTeacherId', 'studentCount', 'isActive', 'createdAt', 'updatedAt', 'operatorTeacherId']),
@@ -28,6 +32,8 @@ function writeData(collection, data) {
 }
 function accessor(source) {
   return Object.freeze({
+    // Explicit user-requested deletion of one authorized mistake only; never called by reads.
+    async deleteMistake(id) { await source.collection('mistakes').doc(id).remove(); },
     async list(collection, where = {}) {
       if (!Object.hasOwn(FIELDS, collection)) fail('BAD_REQUEST', '不支持的查询');
       const rows = [], seen = new Set();

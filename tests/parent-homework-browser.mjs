@@ -21,7 +21,7 @@ const handle = createService({ repo: createRepository(mock.db), identity: async 
 const stub = `window.cloudbase={init(){const auth={currentUser:{uid:'anonymous-test'},signInAnonymously:async()=>({})};
 return{auth:()=>auth,database:()=>({collection(name){return{where(query){return{get:async()=>({data:name==='children'?(${JSON.stringify(data.children)}).filter(row=>row.parentPhone===query.parentPhone):[]}),orderBy(){return this}}}}}}),
 callFunction:async request=>({result:await(await fetch('/__api',{method:'POST',body:JSON.stringify(request.data)})).json()})}}};`;
-const modernStub = `window.cloudbase={init(){return{auth:{signInAnonymously:async()=>({})},
+const modernStub = `window.cloudbase={init(){return{auth:{getSession:async()=>({data:{session:null}}),signInAnonymously:async()=>({})},
 callFunction:async request=>({result:await(await fetch('/__api',{method:'POST',body:JSON.stringify(request.data)})).json()})}}};`;
 const allowed = new Set(['/daily-feedback.html', '/css/style.css', '/css/daily-feedback.css', '/js/daily-feedback.js']);
 const server = http.createServer(async (req, res) => {

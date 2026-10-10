@@ -31,7 +31,7 @@ window.cloudbase = { init() { const auth = {
  async callFunction(request) { const response = await fetch('/__api', {method:'POST',body:JSON.stringify(request.data)});
  if (!response.ok) throw new Error('unavailable'); return {result: await response.json()}; }
 }; } };`;
-const allowed = new Set(['/admin/homework.html','/admin/css/common.css','/admin/css/homework.css',
+const allowed = new Set(['/admin/js/auth.js','/admin/js/homework-feedback.js','/admin/js/login.js','/admin/login.html','/admin/homework.html','/admin/css/common.css','/admin/css/homework.css',
  '/admin/js/common.js','/admin/js/homework.js','/admin/js/homework-api.js']);
 const server = http.createServer(async (req, res) => {
  try {
@@ -112,8 +112,9 @@ try {
  });
  await check('one homework entry contains all three tools and no seven-day notice', async () => {
   assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("#sidebarNav .adm-nav-item:not(.adm-nav-logout)")).map(a=>a.getAttribute("href"))'), ['dashboard.html','students.html','homework.html']);
-  assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("#homeworkSectionNav a")).map(a=>a.textContent)'), ['作业清单','每日反馈','错题管理']);
-  assert.equal(await evaluate('document.querySelector("#homeworkSectionNav [aria-current=page]").textContent'), '作业清单');
+  assert.equal(await evaluate('document.getElementById("homeworkSectionNav")'), null);
+  assert.equal(await evaluate('document.querySelectorAll(".hw-feedback").length'), 2);
+
   assert.equal(await evaluate('document.body.innerText.includes("前 6 天")'), false);
  });
  await check('configured warning thresholds and priority reach the page',async()=>{
@@ -252,15 +253,10 @@ try {
   await evaluate('window.__test.loggedIn=false;document.getElementById("refreshButton").click()');
   assert.equal(await evaluate('document.querySelectorAll(".hw-student").length'),0);
   assert.equal(await evaluate('document.getElementById("loginPanel").hidden'),false);
-  await evaluate('document.getElementById("homeworkUsername").value="test";document.getElementById("homeworkPassword").value="fictional";document.getElementById("homeworkLogin").requestSubmit()');
+  assert.match(await evaluate('document.querySelector("#loginPanel a").getAttribute("href")'),/^login.html/);
+  await evaluate('window.__test.loggedIn=true;document.getElementById("retryButton").click()');
   await until('document.querySelectorAll(".hw-student").length===2');
-  assert.equal(await evaluate('document.getElementById("homeworkPassword").value'),'');
- });
- await check('logout uses platform adapter and clears data',async()=>{
-  await evaluate('document.getElementById("btnLogout").click()');
-  await until('document.body.innerText.includes("作业账号已退出")');
-  assert.equal(await evaluate('window.__test.loggedIn'),false);
-  assert.equal(await evaluate('document.querySelectorAll(".hw-student").length'),0);
+  assert.equal(await evaluate('document.getElementById("homeworkLogin")'),null);
  });
  await check('unavailable backend errors without sample fallback',async()=>{
   unavailable=true;await openPage();await until('document.body.innerText.includes("作业服务连接失败")');

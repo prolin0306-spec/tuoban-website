@@ -27,14 +27,6 @@
 
   // 渲染侧边栏
   window.initSidebar = (current) => {
-    const homeworkPages = [
-      { href: 'homework.html', label: '作业清单' },
-      { href: 'report-editor.html', label: '每日反馈' },
-      { href: 'mistakes.html', label: '错题管理' }
-    ];
-    const sectionPage = current;
-    const inHomework = homeworkPages.some(page => page.href === sectionPage);
-    if (inHomework) current = 'homework.html';
     if (['homework-students.html', 'homework-classes.html'].includes(current)) current = 'students.html';
     const nav = document.getElementById('sidebarNav');
     if (!nav) return;
@@ -55,24 +47,6 @@
       <i class="fas fa-sign-out-alt"></i><span>退出登录</span>
     </a>`;
 
-    const previous = document.getElementById('homeworkSectionNav');
-    if (previous) previous.remove();
-    const topbar = document.querySelector('.adm-main .adm-topbar');
-    if (inHomework && topbar) {
-      const sectionNav = document.createElement('nav');
-      sectionNav.id = 'homeworkSectionNav';
-      sectionNav.className = 'adm-workspace-nav';
-      sectionNav.setAttribute('aria-label', '作业管理功能');
-      homeworkPages.forEach(page => {
-        const anchor = document.createElement('a');
-        anchor.href = page.href + (classId ? '?classId=' + encodeURIComponent(classId) : '');
-        anchor.textContent = page.label;
-        if (sectionPage === page.href) anchor.setAttribute('aria-current', 'page');
-        sectionNav.appendChild(anchor);
-      });
-      topbar.insertAdjacentElement('afterend', sectionNav);
-    }
-
     document.getElementById('btnLogout').addEventListener('click', (e) => {
       e.preventDefault();
       if (typeof window.homeworkLogout === 'function') { window.homeworkLogout(); return; }
@@ -84,9 +58,7 @@
   window.initHeader = () => {
     const el = document.getElementById('topbarInfo');
     if (!el) return;
-    const s = window.adminAuth ? window.adminAuth.check() : null;
-    el.innerHTML = `<i class="fas fa-user-circle"></i> ${s ? s.name : ''} &nbsp;|&nbsp;
-      <i class="fas fa-calendar"></i> ${adminAPI.today()}`;
+    if (window.adminAuth) window.adminAuth.session().then(session => { el.textContent = session.teacher.name || '已登录'; }).catch(() => { el.textContent = ''; });
   };
 
   // 移动端菜单

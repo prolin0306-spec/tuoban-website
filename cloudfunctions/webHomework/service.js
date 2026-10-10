@@ -1,11 +1,13 @@
 'use strict';
 const crypto = require('node:crypto');
+const { createFeedback, KEYS: FEEDBACK_KEYS } = require('./feedback');
 const { AppError, fail } = require('./errors');
 const { project, validDate, shanghaiDate, numeric, compareStudents } = require('./projection');
 const { countWorkdays, distributeIntegers, safeNumber, safeInt } = require('./plan-engine');
 const ROLES = new Set(['boss', 'teacher', 'substituteTeacher']);
 const SPEED_MAP = Object.freeze({ slow: 0.7, normal: 1, fast: 1.3 });
 const ACTION_KEYS = Object.freeze({
+  ...FEEDBACK_KEYS,
   session: ['action'], classes: ['action'], workspace: ['action', 'classId', 'date'],
   managedClasses: ['action'],
   createClass: ['action', 'name', 'grade'],
@@ -13,6 +15,7 @@ const ACTION_KEYS = Object.freeze({
   setClassActive: ['action', 'classId', 'isActive'],
   students: ['action', 'classId', 'query'],
   feedbackStudents: ['action', 'classId'],
+  feedbackOverview: ['action'],
   createStudent: ['action', 'name', 'grade', 'classId', 'speedLevel', 'parentPhone'],
   updateStudent: ['action', 'studentId', 'name', 'grade', 'classId', 'speedLevel', 'parentPhone'],
   setStudentActive: ['action', 'studentId', 'isActive'],
@@ -61,7 +64,7 @@ function normalizeActual(value) {
 function stableId(prefix, ...parts) {
   return `${prefix}_${crypto.createHash('sha256').update(parts.join('\u0000')).digest('hex').slice(0, 48)}`;
 }
-function createService({ repo, identity, environmentId, now = () => new Date() }) {
+function createService({ repo, identity, environmentId, storage, now = () => new Date() }) {
   async function authorize(source = repo) {
     const caller = await identity();
     if (!caller || !id(caller.uid) || caller.isAnonymous !== false) fail('AUTH_REQUIRED', '请登录作业访问账号');
@@ -633,6 +636,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
         updated: records.length === 1 };
     });
   }
+  const feedback = createFeedback({ repo, authorize, resolveStudent, now, storage });
   return async function handle(event) {
     try {
       if (!environmentId) fail('NOT_CONFIGURED', '后端环境尚未配置');
@@ -641,6 +645,7 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       if (Object.keys(event).some(key => !['userInfo', 'tcbContext', ...ACTION_KEYS[event.action]].includes(key))) fail('BAD_REQUEST', '请求包含不支持的字段');
       const auth = await authorize();
       let data;
+      if (Object.hasOwn(FEEDBACK_KEYS, event.action)) data = await feedback(event, auth);
       if (event.action === 'session') data = { teacher: { id: auth.teacher._id, name: auth.teacher.name || '', role: auth.teacher.role } };
       if (event.action === 'classes') data = auth.classes.map(cls => ({ id: cls._id, name: cls.name || '', grade: cls.grade || '' }));
       if (event.action === 'managedClasses') data = await managedClasses(auth);
@@ -653,6 +658,16 @@ function createService({ repo, identity, environmentId, now = () => new Date() }
       }
       if (event.action === 'students') data = await students(event, auth);
       if (event.action === 'feedbackStudents') data = await feedbackStudents(event, auth);
+      if (event.action === 'feedbackOverview') {
+        const roster = await feedbackStudents({}, auth), today = shanghaiDate(now());
+        let done = 0;
+        for (const student of roster.students) {
+          if (!student.feedbackLinked) continue;
+          const rows = await repo.list('daily_reports', { childId: student._id });
+          if (rows.filter(row => typeof row.date === 'string' && row.date.slice(0, 10) === today).length === 1) done++;
+        }
+        data = { total: roster.students.length, done, pending: roster.students.length - done, date: today };
+      }
       if (event.action === 'createStudent') data = await createStudent(event, auth);
       if (event.action === 'updateStudent') data = await updateStudent(event, auth);
       if (event.action === 'setStudentActive') data = await setStudentActive(event, auth);

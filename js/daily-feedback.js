@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  const escapeHTML = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const escaped = value => Array.isArray(value) ? value.map(escaped) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,item]) => [key,escaped(item)])) : typeof value === 'string' ? escapeHTML(value) : value;
+
   // ========== CloudBase 初始化 ==========
   const ENV_ID = 'tuoban-booking-d6g862sk51b7dbb40';
 
@@ -44,7 +47,9 @@
     try {
       if (window.cloudbase && window.cloudbase !== window.dailyFeedbackLegacyCloudbase) {
         homeworkApp = window.cloudbase.init({ env: ENV_ID, region: 'ap-shanghai' });
-        homeworkReady = homeworkApp.auth.signInAnonymously().then(() => true).catch(() => false);
+        homeworkReady = homeworkApp.auth.getSession().then(state =>
+          state && state.data && state.data.session ? true : homeworkApp.auth.signInAnonymously().then(result => !result.error)
+        ).catch(() => false);
       }
     } catch (_) { homeworkReady = Promise.resolve(false); }
   };
@@ -317,6 +322,7 @@
 
   // ========== 渲染成长报告 ==========
   const renderReport = (data) => {
+    data = escaped(data);
     const mealsHTML = (data.meals || []).map((m) =>
       `<div class="df-meal-item">
         <span class="df-meal-name">${m.meal || ''}</span>
@@ -403,6 +409,7 @@
 
   // ========== 渲染历史记录 ==========
   const renderHistory = (history) => {
+    history = escaped(history);
     const historyHTML = history.map((item, index) => `
       <div class="df-timeline-item">
         <div class="df-timeline-dot"></div>
@@ -484,15 +491,15 @@
         <h2 class="df-history-title"><i class="fas fa-exclamation-triangle"></i> 错题本</h2>
         <div class="df-mistakes-grid" id="mistakesGrid">
           ${mistakes.map((m) => `
-            <div class="df-mistake-card" id="mistake-${m._id}">
+            <div class="df-mistake-card" id="mistake-${escapeHTML(m._id)}">
               <div class="df-mistake-image-wrap">
                 <div class="df-mistake-placeholder"><i class="fas fa-image"></i></div>
               </div>
               <div class="df-mistake-info">
-                <span class="df-mistake-subject" style="background:${subjects[m.subject] || '#64748B'}20;color:${subjects[m.subject] || '#64748B'}">${m.subject || ''}</span>
-                <span class="df-mistake-date">${m.date || ''}</span>
+                <span class="df-mistake-subject" style="background:${subjects[m.subject] || '#64748B'}20;color:${subjects[m.subject] || '#64748B'}">${escapeHTML(m.subject)}</span>
+                <span class="df-mistake-date">${escapeHTML(m.date)}</span>
               </div>
-              ${m.note ? `<p class="df-mistake-note">${m.note}</p>` : ''}
+              ${m.note ? `<p class="df-mistake-note">${escapeHTML(m.note)}</p>` : ''}
             </div>
           `).join('')}
         </div>
@@ -508,15 +515,15 @@
         app.getTempFileURL({ fileList: [m.imageFileID] })
           .then((r) => {
             const url = r.fileList && r.fileList[0] ? r.fileList[0].tempFileURL : '';
-            if (!url) return;
+            if (!/^https:\/\//.test(url)) return;
             const card = document.getElementById('mistake-' + m._id);
             if (!card) return;
             const wrap = card.querySelector('.df-mistake-image-wrap');
-            wrap.innerHTML = `<img src="${url}" alt="错题" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" class="mistake-img">`;
+            wrap.innerHTML = `<img src="${escapeHTML(url)}" alt="错题" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" class="mistake-img">`;
             wrap.querySelector('img').addEventListener('click', () => {
               const lb = document.createElement('div');
               lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer;';
-              lb.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;border-radius:8px;">`;
+              lb.innerHTML = `<img src="${escapeHTML(url)}" style="max-width:90vw;max-height:90vh;border-radius:8px;">`;
               lb.addEventListener('click', () => lb.remove());
               document.body.appendChild(lb);
             });

@@ -20,7 +20,7 @@ const sdkStub = `window.__test={loggedIn:true,confirms:[]};window.confirm=messag
 window.cloudbase={init(){const auth={getSession:async()=>({data:{session:window.__test.loggedIn?{sub:'test-uid'}:null}}),
 signInWithPassword:async()=>{window.__test.loggedIn=true;return{data:{}}},signOut:async()=>{window.__test.loggedIn=false;return{data:{}}}};
 return{auth,async callFunction(request){const response=await fetch('/__api',{method:'POST',body:JSON.stringify(request.data)});if(!response.ok)throw new Error('unavailable');return{result:await response.json()}}}}};`;
-const allowed = new Set(['/admin/homework-classes.html', '/admin/css/common.css', '/admin/css/homework.css', '/admin/css/homework-classes.css',
+const allowed = new Set(['/admin/js/auth.js','/admin/js/homework-feedback.js','/admin/js/login.js','/admin/login.html','/admin/homework-classes.html', '/admin/css/common.css', '/admin/css/homework.css', '/admin/css/homework-classes.css',
   '/admin/js/common.js', '/admin/js/homework-api.js', '/admin/js/homework-classes.js']);
 const server = http.createServer(async (req, res) => {
   try {

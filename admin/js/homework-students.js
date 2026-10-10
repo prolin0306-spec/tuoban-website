@@ -191,16 +191,9 @@
   }
 
   window.homeworkLogout = async () => {
-    ++generation; active = false; clearStudents(); feedbackChildren = []; $('studentPanel').hidden = true; $('topbarInfo').textContent = '';
-    try { await api.logout(); $('loginPanel').hidden = false; $('retryButton').hidden = true; message('作业账号已退出'); }
-    catch (error) { message(error.message, 'error'); }
+    try { await window.adminAuth.logout(); } catch (error) { message(error.message, 'error'); }
   };
-  $('homeworkLogin').addEventListener('submit', async event => {
-    event.preventDefault(); const button = $('loginButton'); button.disabled = true; message('正在验证账号…');
-    try { await api.login($('homeworkUsername').value, $('homeworkPassword').value); await start(); }
-    catch (error) { failure(error); $('loginPanel').hidden = false; }
-    finally { $('homeworkPassword').value = ''; button.disabled = false; }
-  });
+
   $('studentForm').addEventListener('submit', saveStudent);
   $('feedbackLinkForm').addEventListener('submit', saveFeedbackLink);
   $('findFeedbackChildButton').addEventListener('click', findFeedbackChild);

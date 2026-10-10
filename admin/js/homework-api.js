@@ -39,6 +39,7 @@
       if (!result || typeof result.code !== 'string') throw new HomeworkError('UNAVAILABLE', '作业服务返回无效数据');
       if (result.code !== 'OK') {
         const messages = {
+          FEEDBACK_UNLINKED: '请先在学生管理关联家长反馈',
           AUTH_REQUIRED: '作业会话已过期，请重新验证',
           TEACHER_UNLINKED: '账号尚未关联作业老师或关联已停用，请联系管理员',
           TEACHER_DISABLED: '作业老师未启用，请联系管理员',
@@ -87,6 +88,11 @@
         catch (_) { throw new HomeworkError('LOGIN_FAILED', '验证失败，请检查账号、密码或联系管理员确认登录服务'); }
         return invoke('session');
       },
+      feedbackOverview: () => invoke('feedbackOverview'),
+      studentFeedback: value => invoke('studentFeedback', value),
+      saveStudentFeedback: value => invoke('saveStudentFeedback', value),
+      saveStudentMistake: value => invoke('saveStudentMistake', value),
+      deleteStudentMistake: value => invoke('deleteStudentMistake', value),
       session: () => invoke('session'),
       classes: () => invoke('classes'),
       managedClasses: () => invoke('managedClasses'),

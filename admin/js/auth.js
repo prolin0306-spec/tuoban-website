@@ -1,48 +1,31 @@
 (() => {
   'use strict';
-
-  const STORAGE_KEY = 'admin_teacher';
-
-  window.adminAuth = {
-    login(username, password) {
-      return window.adminDb.collection('teachers')
-        .where({ username, password })
-        .get()
-        .then((res) => {
-          if (!res.data || res.data.length === 0) return null;
-          const t = res.data[0];
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
-            id: t._id,
-            name: t.name || t.username,
-            time: Date.now()
-          }));
-          return t;
-        });
-    },
-
-    logout() {
-      sessionStorage.removeItem(STORAGE_KEY);
-      window.location.href = 'login.html';
-    },
-
-    check() {
-      try {
-        const raw = sessionStorage.getItem(STORAGE_KEY);
-        if (!raw) return null;
-        return JSON.parse(raw);
-      } catch (e) {
-        return null;
-      }
-    },
-
-    guard() {
-      const s = this.check();
-      if (!s) {
-        window.location.href = 'login.html';
-        return null;
-      }
-      return s;
+  const api = window.createHomeworkAPI(window.HOMEWORK_CONFIG, window.cloudbase);
+  const allowed = new Set(['dashboard.html','homework.html','students.html','homework-students.html','homework-classes.html']);
+  function destination(value) {
+    try {
+      const url = new URL(value || 'homework.html', location.href);
+      const name = url.pathname.split('/').pop();
+      if (url.origin !== location.origin || !allowed.has(name) || url.pathname !== new URL(name, location.href).pathname) return 'homework.html';
+      const params = new URLSearchParams();
+      for (const key of ['classId','studentId','childId','panel']) if (url.searchParams.has(key)) params.set(key,url.searchParams.get(key));
+      return name + (params.size ? '?' + params : '');
+    } catch (_) { return 'homework.html'; }
+  }
+  window.adminAuth = Object.freeze({
+    login: (username,password) => api.login(username,password),
+    session: () => api.session(),
+    destination,
+    async logout() {
+      await api.logout();
+      sessionStorage.removeItem('admin_teacher');
+      try { localStorage.setItem('admin-auth-logout',String(Date.now())); } catch (_) {}
+      location.replace('login.html');
     }
-  };
-
+  });
+  // The legacy display cache is never accepted as identity.
+  sessionStorage.removeItem('admin_teacher');
+  window.addEventListener('storage', event => {
+    if (event.key === 'admin-auth-logout' && location.pathname.endsWith('/login.html') === false) location.replace('login.html');
+  });
 })();

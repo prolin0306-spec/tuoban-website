@@ -189,6 +189,7 @@
         tasks.append(row);
       }
       card.append(tasks); $('studentCards').append(card);
+      window.HomeworkFeedback.mount(card, student, data.date, api);
     }
   }
   async function loadWorkspace() {
@@ -214,21 +215,20 @@
       $('classSelect').replaceChildren();
       for (const cls of classes) { const option = element('option', cls.name || '未命名班级'); option.value = cls.id; $('classSelect').append(option); }
       if (!classes.length) { message('暂无授权班级，请联系管理员分配班级或代班权限'); return; }
+      const params = new URLSearchParams(location.search);
+      if (params.get('childId') || params.get('studentId')) {
+        const roster = await api.feedbackStudents({});
+        const match = roster.students.find(row => params.get('childId') ? row._id === params.get('childId') : row.homeworkStudentId === params.get('studentId'));
+        if (match) { $('classSelect').value = match.classId; window.homeworkRequestedStudent = match.homeworkStudentId; }
+      }
       if (requestedClassId && classes.some(cls => cls.id === requestedClassId)) $('classSelect').value = requestedClassId;
       $('workspacePanel').hidden = false; await loadWorkspace();
     } catch (error) { if (sequence === generation) failure(error); }
   }
   window.homeworkLogout = async () => {
-    ++generation; active = false; clearData(); $('workspacePanel').hidden = true; $('topbarInfo').textContent = '';
-    try { await api.logout(); $('loginPanel').hidden = false; $('retryButton').hidden = true; message('作业账号已退出'); }
-    catch (error) { message(error.message, 'error'); }
+    try { await window.adminAuth.logout(); } catch (error) { message(error.message, 'error'); }
   };
-  $('homeworkLogin').addEventListener('submit', async event => {
-    event.preventDefault(); const button = $('loginButton'); button.disabled = true; message('正在验证账号…');
-    try { await api.login($('homeworkUsername').value, $('homeworkPassword').value); await start(); }
-    catch (error) { failure(error); $('loginPanel').hidden = false; }
-    finally { $('homeworkPassword').value = ''; button.disabled = false; }
-  });
+
   $('bookForm').addEventListener('submit', async event => {
     event.preventDefault(); const button = $('createBookButton');
     const books = bookRows().map(row => {
@@ -275,7 +275,7 @@
   window.initSidebar('homework.html');
   try { api.onExpired(() => { ++generation; failure({ code: 'AUTH_REQUIRED', message: '作业会话已过期，请重新验证' }); }); }
   catch (error) { failure(error); }
-  window.addEventListener('focus', () => { if (active) loadWorkspace(); });
+  window.addEventListener('focus', () => { if (active && !window.HomeworkFeedback.hasPending()) loadWorkspace(); });
   window.addEventListener('storage', event => { if (event.key === 'homework-students-revision' && active) loadWorkspace(); });
   start();
 })();

@@ -11,6 +11,17 @@ exports.main = async event => {
   const app = cloudbase.init({ env: cloudbase.SYMBOL_CURRENT_ENV });
   return createService({
     repo: createRepository(app.database()), environmentId: actualEnv,
+    storage: {
+      upload: async (cloudPath, fileContent) => (await app.uploadFile({ cloudPath, fileContent })).fileID,
+      urls: async ids => {
+        const urls = {};
+        for (let offset = 0; offset < ids.length; offset += 50) {
+          const result = await app.getTempFileURL({ fileList: ids.slice(offset, offset + 50) });
+          for (const item of result.fileList || []) if (item.tempFileURL) urls[item.fileID] = item.tempFileURL;
+        }
+        return urls;
+      }
+    },
     identity: async () => {
       // No UID argument: this reads the SDK gateway's trusted invocation context.
       const result = await app.auth().getEndUserInfo();

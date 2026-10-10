@@ -66,8 +66,10 @@
     try { const session = await api.session(); if (sequence !== generation) return; active = true; $('loginPanel').hidden = true; $('classPanel').hidden = false; $('topbarInfo').textContent = session.teacher.name || '已验证老师'; await loadClasses(); }
     catch (error) { if (sequence === generation) failure(error); }
   }
-  window.homeworkLogout = async () => { ++generation; active = false; $('classList').replaceChildren(); $('classPanel').hidden = true; $('topbarInfo').textContent = ''; try { await api.logout(); $('loginPanel').hidden = false; message('作业账号已退出'); } catch (error) { message(error.message, 'error'); } };
-  $('homeworkLogin').addEventListener('submit', async event => { event.preventDefault(); const button = $('loginButton'); button.disabled = true; try { await api.login($('homeworkUsername').value, $('homeworkPassword').value); await start(); } catch (error) { failure(error); $('loginPanel').hidden = false; } finally { $('homeworkPassword').value = ''; button.disabled = false; } });
+  window.homeworkLogout = async () => {
+    try { await window.adminAuth.logout(); } catch (error) { message(error.message, 'error'); }
+  };
+
   $('addClassButton').addEventListener('click', () => openDialog()); $('closeDialogButton').addEventListener('click', closeDialog); $('cancelButton').addEventListener('click', closeDialog);
   $('classForm').addEventListener('submit', event => {
     event.preventDefault(); const name = $('className').value.trim(), grade = $('classGrade').value.trim(); if (!name || !grade) { message('班级名称和年级均为必填项', 'error'); return; }

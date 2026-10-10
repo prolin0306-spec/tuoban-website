@@ -1,93 +1,40 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>老师登录 — 春日部托管</title>
-  <link rel="stylesheet" href="css/common.css?v=workspace-navigation-1">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>老师与管理员登录 — 春日部托管</title>
+<link rel="stylesheet" href="css/common.css?v=integrated-1">
 </head>
 <body class="adm-login-page">
-
-  <div class="adm-login-card">
-    <h1><i class="fas fa-chalkboard-teacher" style="color:var(--primary);"></i></h1>
-    <h1>老师登录</h1>
-    <p class="adm-login-sub">春日部托管后台管理系统</p>
-
-    <div class="adm-form-group">
-      <label class="adm-form-label">账号</label>
-      <input type="text" id="username" class="adm-form-input" placeholder="请输入老师账号" autocomplete="username">
-    </div>
-
-    <div class="adm-form-group">
-      <label class="adm-form-label">密码</label>
-      <input type="password" id="password" class="adm-form-input" placeholder="请输入密码" autocomplete="current-password">
-    </div>
-
-    <button class="adm-btn adm-btn-primary adm-btn-block" id="btnLogin" style="margin-top:8px;">
-      <i class="fas fa-sign-in-alt"></i> 登录
-    </button>
-  </div>
-
-  <script src="../js/cloudbase.full.min.js"></script>
-  <script src="js/cloudbase.js?v=student-roster-1"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/common.js?v=workspace-navigation-1"></script>
-  <script>
-    (() => {
-      'use strict';
-
-      const usernameEl = document.getElementById('username');
-      const passwordEl = document.getElementById('password');
-      const btnLogin = document.getElementById('btnLogin');
-
-      // 已登录则跳转
-      if (window.adminAuth && window.adminAuth.check()) {
-        window.location.href = 'dashboard.html';
-      }
-
-      const doLogin = () => {
-        const username = usernameEl.value.trim();
-        const password = passwordEl.value.trim();
-
-        if (!username || !password) {
-          window.showToast('请输入账号和密码', 'error');
-          return;
-        }
-
-        waitReady().then((ok) => {
-          if (!ok) {
-            window.showToast('系统连接失败，请刷新', 'error');
-            return;
-          }
-
-          btnLogin.disabled = true;
-          btnLogin.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 登录中...';
-
-          window.adminAuth.login(username, password).then((teacher) => {
-            btnLogin.disabled = false;
-            btnLogin.innerHTML = '<i class="fas fa-sign-in-alt"></i> 登录';
-
-            if (!teacher) {
-              window.showToast('账号或密码错误', 'error');
-              return;
-            }
-            window.location.href = 'dashboard.html';
-          }).catch((err) => {
-            console.error('登录失败:', err);
-            window.showToast('登录失败，请重试', 'error');
-            btnLogin.disabled = false;
-            btnLogin.innerHTML = '<i class="fas fa-sign-in-alt"></i> 登录';
-          });
-        });
-      };
-
-      btnLogin.addEventListener('click', doLogin);
-      passwordEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') doLogin();
-      });
-    })();
-  </script>
+<main class="adm-login-card">
+<h1>老师与管理员登录</h1>
+<p class="adm-login-sub">一个账号管理学生、作业、每日反馈与错题。使用已开通的作业管理账号，权限由系统核验。</p>
+<form id="adminLogin">
+<div class="adm-form-group">
+<label for="username">账号</label>
+<input id="username" class="adm-form-input" autocomplete="username" required maxlength="128">
+</div>
+<div class="adm-form-group">
+<label for="password">密码</label>
+<input id="password" class="adm-form-input" type="password" autocomplete="current-password" required>
+</div>
+<button id="btnLogin" class="adm-btn adm-btn-primary adm-btn-block" type="submit">登录后台</button>
+</form>
+<p id="loginStatus" role="status" aria-live="polite">
+</p>
+<p>如提示未关联或停用，请联系负责人核对账号权限。</p>
+</main>
+<script src="../js/cloudbase-v3.10.0.full.min.js">
+</script>
+<script src="js/homework-config.js?v=integrated-1">
+</script>
+<script src="js/homework-api.js?v=integrated-1">
+</script>
+<script src="js/auth.js?v=integrated-1">
+</script>
+<script src="js/login.js?v=integrated-1">
+</script>
 </body>
 </html>
