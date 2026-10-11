@@ -573,3 +573,7 @@
   color: var(--text-light);
   line-height: 1.5;
 }
+
+.df-homework-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; }
+.df-homework-controls input, .df-homework-controls button { max-width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; background: #fff; }
+.df-homework-controls button { cursor: pointer; color: #166534; }

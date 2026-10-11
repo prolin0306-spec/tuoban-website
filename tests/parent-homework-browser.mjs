@@ -19,7 +19,7 @@ const mock = mockDatabase(data);
 const handle = createService({ repo: createRepository(mock.db), identity: async () => ({ uid: 'anonymous-test' }),
   now: () => new Date('2026-09-15T04:00:00Z') });
 const stub = `window.cloudbase={init(){const auth={currentUser:{uid:'anonymous-test'},signInAnonymously:async()=>({})};
-return{auth:()=>auth,database:()=>({collection(name){return{where(query){return{get:async()=>({data:name==='children'?(${JSON.stringify(data.children)}).filter(row=>row.parentPhone===query.parentPhone):[]}),orderBy(){return this}}}}}}),
+return{auth:()=>auth,database:()=>({collection(name){return{where(query){return{get:async()=>{if(window.__failFeedback && name!=='children')throw new Error('fixture denied');return({data:name==='children'?(${JSON.stringify(data.children)}).filter(row=>row.parentPhone===query.parentPhone):[]})},orderBy(){return this}}}}}}),
 callFunction:async request=>({result:await(await fetch('/__api',{method:'POST',body:JSON.stringify(request.data)})).json()})}}};`;
 const modernStub = `window.cloudbase={init(){return{auth:{getSession:async()=>({data:{session:null}}),signInAnonymously:async()=>({})},
 callFunction:async request=>({result:await(await fetch('/__api',{method:'POST',body:JSON.stringify(request.data)})).json()})}}};`;
@@ -92,8 +92,21 @@ try {
   await evaluate(`document.getElementById('phoneInput').value='13800000001'; document.getElementById('queryBtn').click()`);
   await until('document.querySelector(".df-homework-card")');
   assert.match(await evaluate('document.getElementById("homeworkSection").textContent'), /整项已完成/);
-  assert.match(await evaluate('document.getElementById("homeworkSection").textContent'), /今日实际：2/);
+  assert.match(await evaluate('document.getElementById("homeworkSection").textContent'), /当日实际：2/);
   assert.equal(await evaluate('document.getElementById("homeworkSection").textContent.includes("上周日作业不应出现")'),false);
+  await evaluate('window.__failFeedback=true;document.getElementById("refreshHomework").click()');
+  await until('document.getElementById("feedbackLoadStatus").textContent.includes("读取失败")');
+  assert.equal(await evaluate('document.querySelectorAll(".df-homework-card").length'),3);
+  data.hw_daily_plans=[];
+  await evaluate('document.getElementById("refreshHomework").click()');
+  await until('document.getElementById("homeworkSection").textContent.includes("当日尚未生成计划")');
+  assert.match(await evaluate('document.getElementById("homeworkSection").textContent'),/当日实际：2/);
+  assert.match(await evaluate('document.getElementById("homeworkSection").textContent'),/当日实际：0/);
+  data.hw_daily_plans=structuredClone(before.hw_daily_plans);
+  await evaluate('window.__failFeedback=false;document.getElementById("homeworkDate").value="2026-09-07";document.getElementById("homeworkDate").dispatchEvent(new Event("change"))');
+  await until('document.getElementById("homeworkList").textContent.includes("上周日作业不应出现")');
+  await evaluate('document.getElementById("homeworkDate").value="2026-09-15";document.getElementById("homeworkDate").dispatchEvent(new Event("change"))');
+  await until('document.getElementById("homeworkList").textContent.includes("当日实际：2")');
   data.hw_students[0].isActive=false;
   await evaluate('document.getElementById("queryBtn").click()');
   await until('document.getElementById("homeworkCaption").textContent.includes("已停用")');

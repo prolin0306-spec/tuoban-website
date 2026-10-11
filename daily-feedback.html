@@ -6,7 +6,7 @@
   <title>每日成长反馈 — 春日部托管</title>
   <meta name="description" content="春日部托管每日成长反馈，记录孩子学习与生活，让家长随时了解孩子在托班情况。">
   <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/daily-feedback.css">
+  <link rel="stylesheet" href="css/daily-feedback.css?v=parent-sync-1">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="js/cloudbase.full.min.js"></script>
   <script>window.dailyFeedbackLegacyCloudbase = window.cloudbase;</script>
@@ -68,7 +68,9 @@
   <section class="df-homework-section" id="homeworkSection" style="display:none;" aria-live="polite">
     <div class="container">
       <h2 class="df-history-title">作业完成情况</h2>
+      <div class="df-homework-controls"><label for="homeworkDate">查看作业日期</label> <input type="date" id="homeworkDate"> <button type="button" id="refreshHomework">刷新作业</button></div>
       <p class="df-homework-caption" id="homeworkCaption"></p>
+      <p id="feedbackLoadStatus" role="status"></p>
       <div class="df-homework-list" id="homeworkList"></div>
     </div>
   </section>
@@ -111,6 +113,6 @@
   <!-- 返回顶部 -->
   <button class="back-to-top" id="backToTop" aria-label="返回顶部">↑</button>
 
-  <script src="js/daily-feedback.js?v=dated-books-1"></script>
+  <script src="js/daily-feedback.js?v=parent-sync-1"></script>
 </body>
 </html>

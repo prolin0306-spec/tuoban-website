@@ -48,7 +48,7 @@
       if (window.cloudbase && window.cloudbase !== window.dailyFeedbackLegacyCloudbase) {
         homeworkApp = window.cloudbase.init({ env: ENV_ID, region: 'ap-shanghai' });
         homeworkReady = homeworkApp.auth.getSession().then(state =>
-          state && state.data && state.data.session ? true : homeworkApp.auth.signInAnonymously().then(result => !result.error)
+          state && state.data && state.data.session ? true : homeworkApp.auth.signInAnonymously().then(result => !result || !result.error)
         ).catch(() => false);
       }
     } catch (_) { homeworkReady = Promise.resolve(false); }
@@ -116,7 +116,13 @@
   const homeworkSection = document.getElementById('homeworkSection');
   const homeworkList = document.getElementById('homeworkList');
   const homeworkCaption = document.getElementById('homeworkCaption');
-  let queryGeneration = 0;
+  let queryGeneration = 0, selectedHomeworkDate = '';
+  const homeworkDate = document.getElementById('homeworkDate');
+  homeworkDate.max = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
+  const readWithTimeout = promise => new Promise((resolve,reject) => {
+    const timer=setTimeout(()=>reject(new Error('READ_TIMEOUT')),15000);
+    Promise.resolve(promise).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
+  });
 
   const homeworkLine = (tag, value, className) => {
     const node = document.createElement(tag);
@@ -128,10 +134,12 @@
     homeworkList.replaceChildren();
     homeworkSection.style.display = 'block';
     if (!result || result.code !== 'OK') {
-      homeworkCaption.textContent = '作业信息暂不可用，请稍后重试。';
+      const messages = { AUTH_REQUIRED:'作业会话已失效，请刷新页面重新查询。', NOT_FOUND:'学生信息不匹配，请联系老师核对关联。', DATA_CONFLICT:'学生关联存在冲突，请联系老师核对。', BAD_DATE:'请选择有效日期，不能查询未来日期。', DATE_OUTSIDE_TERM:'所选日期不在已配置学期内。', TERM_NOT_CONFIGURED:'学期未配置，请联系老师核对。', NOT_CONFIGURED:'作业服务尚未配置，请联系老师。' };
+      homeworkCaption.textContent = messages[result && result.code] || '作业查询失败，请点击刷新作业重试；这不代表没有作业。';
       return;
     }
     const data = result.data || {};
+    if (data.date) homeworkDate.value = data.date;
     if (!data.linked) {
       homeworkCaption.textContent = '尚未关联作业学生，请联系老师核对。';
       return;
@@ -142,7 +150,7 @@
     }
     homeworkCaption.textContent = `与老师作业管理同步：${data.date || '今天'}的登记作业及当日有计划或实际记录的作业；实际完成量以老师录入为准。`;
     if (!Array.isArray(data.books) || !data.books.length) {
-      homeworkList.append(homeworkLine('p', '今天尚未登记作业，也没有当日计划或实际记录。'));
+      homeworkList.append(homeworkLine('p', '所选日期尚未登记作业，也没有该日期的计划或实际记录。'));
       return;
     }
     for (const book of data.books) {
@@ -152,12 +160,8 @@
       card.append(homeworkLine('p', book.isCompleted ? '✓ 整项已完成' : '整项未完成',
         book.isCompleted ? 'df-homework-done' : 'df-homework-pending'));
       card.append(homeworkLine('p', `累计完成 ${book.completedAmount} / ${book.totalAmount} ${book.unit || ''}`));
-      if (book.todayPlannedAmount === null) card.append(homeworkLine('p', '今日尚未生成计划'));
-      else {
-        card.append(homeworkLine('p', `今日计划 ${book.todayPlannedAmount} ${book.unit || ''}`));
-        card.append(homeworkLine('p', book.todayActualAmount === null ? '今日实际：未记录' :
-          `今日实际：${book.todayActualAmount} ${book.unit || ''}`));
-      }
+      card.append(homeworkLine('p', book.todayPlannedAmount === null ? '当日尚未生成计划' : `当日计划 ${book.todayPlannedAmount} ${book.unit || ''}`));
+      card.append(homeworkLine('p', book.todayActualAmount === null ? '当日实际：未记录' : `当日实际：${book.todayActualAmount} ${book.unit || ''}`));
       homeworkList.append(card);
     }
   };
@@ -226,7 +230,9 @@
     }
 
     const currentQuery = ++queryGeneration;
-    homeworkSection.style.display = 'none';
+    homeworkSection.style.display = 'block';
+    homeworkCaption.textContent = '正在读取作业…';
+    document.getElementById('feedbackLoadStatus').textContent = '';
     homeworkList.replaceChildren();
     reportSection.style.display = 'none';
     historySection.style.display = 'none';
@@ -239,7 +245,9 @@
     // parentPhone 在数据库中为 Number 类型，查询条件必须一致
     db.collection('children').where({ parentPhone: parseInt(phone, 10) }).get()
       .then((res) => {
+        if (currentQuery !== queryGeneration) return;
         if (!res.data || res.data.length === 0) {
+          homeworkCaption.textContent = '未找到匹配的孩子信息，请核对查询信息或联系老师检查关联。';
           showToast('未找到匹配的孩子信息', 'error');
           queryBtn.disabled = false;
           queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
@@ -261,14 +269,22 @@
           .then((r) => r.data || []);
 
         const homeworkP = homeworkReady.then(ready => ready && homeworkApp ? homeworkApp.callFunction({
-          name: 'webParentHomework', data: { action: 'summary', childId: child._id, phone }
+          name: 'webParentHomework', data: { action: 'summary', childId: child._id, phone, ...(selectedHomeworkDate ? {date:selectedHomeworkDate} : {}) }
         }).then(response => response.result) : { code: 'DATA_UNAVAILABLE' })
           .catch(() => ({ code: 'DATA_UNAVAILABLE' }));
 
-        return Promise.all([reportsP, mistakesP, homeworkP])
-          .then(([reports, mistakes, homework]) => ({ child, reports, mistakes, homework }));
+        const homeworkResult = readWithTimeout(homeworkP).catch(()=>({code:'DATA_UNAVAILABLE'})).then(homework=>{
+          if(currentQuery===queryGeneration) renderHomework(homework);
+          return homework;
+        });
+        return Promise.all([
+          readWithTimeout(reportsP).then(rows=>({rows})).catch(()=>({rows:[],failed:true})),
+          readWithTimeout(mistakesP).then(rows=>({rows})).catch(()=>({rows:[],failed:true})), homeworkResult
+        ]).then(([reports, mistakes, homework]) => ({child, reports:reports.rows, mistakes:mistakes.rows, homework,
+          feedbackFailed:reports.failed || mistakes.failed}));
       })
       .then((result) => {
+        if (currentQuery !== queryGeneration) return;
         queryBtn.disabled = false;
         queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
 
@@ -276,9 +292,10 @@
         if (currentQuery !== queryGeneration) return;
         const { child, reports, mistakes, homework } = result;
         renderHomework(homework);
+        document.getElementById('feedbackLoadStatus').textContent = result.feedbackFailed ? '每日反馈或错题暂时读取失败；作业完成情况独立显示，可稍后重试。' : '';
 
         if (reports.length === 0 && mistakes.length === 0) {
-          if (!homework || homework.code !== 'OK' || !homework.data.linked || !homework.data.books.length) {
+          if (!result.feedbackFailed && homework && homework.code === 'OK' && homework.data.linked && !homework.data.books.length) {
             showToast('该孩子暂无反馈记录', 'error');
           }
           reportSection.style.display = 'none';
@@ -313,7 +330,7 @@
       })
       .catch((err) => {
         if (currentQuery !== queryGeneration) return;
-        console.error('查询失败:', err);
+        renderHomework({code:'DATA_UNAVAILABLE'});
         showToast('查询失败，请重试', 'error');
         queryBtn.disabled = false;
         queryBtn.innerHTML = '<i class="fas fa-search"></i> 立即查询';
@@ -531,6 +548,9 @@
       });
     }
   };
+
+  homeworkDate.addEventListener('change', () => { selectedHomeworkDate=homeworkDate.value; handleQuery(); });
+  document.getElementById('refreshHomework').addEventListener('click', handleQuery);
 
   // ========== 绑定事件 ==========
   if (queryBtn) {

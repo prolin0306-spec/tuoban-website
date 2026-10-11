@@ -102,3 +102,16 @@ test('parent with no today assignment, plan or record sees no old undated books;
  data.hw_daily_records[0].date='2026-09-16';data.hw_daily_records[0].actualAmount=0;
  const result=await handle(request);assert.equal(result.data.books.length,1);assert.equal(result.data.books[0].todayActualAmount,0);assert.equal(mock.writes,0);
 });
+
+test('parent history uses selected date and current actual records remain visible for older assigned books',async()=>{
+ const {data,mock,handle}=setup();data.hw_students[0].feedbackChildId='feedback-child-a';data.hw_homework_books[0].assignmentDate='2026-09-01';
+ data.hw_daily_records[0].date='2026-09-16';data.hw_daily_records[0].actualAmount=0;const before=structuredClone(data);
+ const current=await handle(request);assert.equal(current.data.books.length,1);assert.equal(current.data.books[0].todayActualAmount,0);assert.equal(current.data.books[0].todayPlannedAmount,null);
+ const historical=await handle({...request,date:'2026-09-01'});assert.equal(historical.data.books.length,1);assert.equal(historical.data.date,'2026-09-01');
+ for(const date of ['2026-02-30','not-date','2026-09-17'])assert.equal((await handle({...request,date})).code,'BAD_DATE');
+ assert.equal((await handle({...request,date:'2026-08-01'})).code,'DATE_OUTSIDE_TERM');assert.deepEqual(data,before);assert.equal(mock.writes,0);
+});
+test('parent date formatter uses exact YYYY-MM-DD independent of locale formatting',()=>{
+ assert.equal(shanghaiToday(new Date('2026-10-10T16:00:00Z')),'2026-10-11');
+ assert.equal(shanghaiToday(new Date('2026-10-10T15:59:59Z')),'2026-10-10');
+});

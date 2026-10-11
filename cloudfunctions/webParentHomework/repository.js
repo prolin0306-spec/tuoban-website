@@ -1,5 +1,6 @@
 'use strict';
 const FIELDS = Object.freeze({
+  hw_settings: ['_id','termStartDate','termEndDate'],
   children: ['_id', 'parentPhone'],
   hw_students: ['_id', 'feedbackChildId', 'name', 'classId', 'isActive'],
   hw_classes: ['_id', 'name'],
