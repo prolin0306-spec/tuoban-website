@@ -129,11 +129,20 @@ try {
   await until('document.getElementById("dashboardLinks")?.hidden===false');
   assert.equal(await evaluate('document.querySelectorAll("#sidebarNav .adm-nav-item:not(.adm-nav-logout)").length'),3);
   assert.deepEqual(await evaluate('Array.from(document.querySelectorAll("#statsGrid strong")).map(node=>node.textContent)'),['2','1','1']);
+  for (const page of ['students.html','homework-classes.html','homework.html']) {
+    await send('Page.navigate',{url:origin+'/admin/'+page});
+    await until('window.adminAuth && document.getElementById("loginPanel")?.hidden===true && document.getElementById("topbarInfo")?.textContent');
+    assert.equal(await evaluate('sessionStorage.getItem("mock-session")'),'yes');
+    assert.equal(await evaluate('location.pathname'),'/admin/'+page);
+  }
+  await send('Page.reload');
+  await until('document.querySelectorAll(".hw-student").length===2');
+  console.log('PASS navigation through students/classes/workspace and reload retains the platform login');
   await evaluate('document.getElementById("btnLogout").click()');
   await until('location.pathname==="/admin/login.html" && document.getElementById("adminLogin")');
   assert.equal(authenticated,false);assert.equal(await evaluate('sessionStorage.getItem("mock-session")'),null);
   console.log('PASS old links open integrated cards; dashboard shares login and logout');
-  console.log('RESULT 5 integrated workflow browser checks passed, all data fictional');
+  console.log('RESULT 6 integrated workflow browser checks passed, all data fictional');
 } finally {
   for (const task of pending.values()) clearTimeout(task.timer);
   if (socket) socket.close();

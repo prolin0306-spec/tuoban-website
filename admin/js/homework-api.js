@@ -7,7 +7,18 @@
   class HomeworkError extends Error {
     constructor(code, message) { super(message); this.code = code; }
   }
+  const clients = new WeakMap();
   function createHomeworkAPI(config, sdk) {
+    if (sdk && (typeof sdk === 'object' || typeof sdk === 'function')) {
+      const key = JSON.stringify([config && config.envId, config && config.functionName, config && config.enabled]);
+      let cache = clients.get(sdk);
+      if (!cache) { cache = new Map(); clients.set(sdk, cache); }
+      if (cache.has(key)) return cache.get(key);
+      const client = buildAPI(config, sdk); cache.set(key, client); return client;
+    }
+    return buildAPI(config, sdk);
+  }
+  function buildAPI(config, sdk) {
     let app, auth, modern = false;
     const expired = () => new HomeworkError('AUTH_REQUIRED', '作业会话已过期或尚未登录，请重新验证');
     function init() {
@@ -22,17 +33,29 @@
         if (!modern && typeof auth.signInWithUsernameAndPassword !== 'function') throw new HomeworkError('UNAVAILABLE', '登录组件版本不兼容');
       }
     }
+    const isAuthError = error => /^(AUTH_REQUIRED|ACCESS_TOKEN_EXPIRED|INVALID_TOKEN|INVALID_REFRESH_TOKEN|LOGIN_REQUIRED|UNAUTHENTICATED|invalid_grant|invalid_token)$/i.test(String(error && (error.code || error.error) || ''));
+    const sessionError = error => isAuthError(error) ? expired() : new HomeworkError('UNAVAILABLE', '登录状态暂时无法核验，请检查网络后重试，无需退出账号');
+    let pendingSession;
+    async function checkSession() {
+      if (pendingSession) return pendingSession;
+      pendingSession = (async () => {
+        let state;
+        try { state = modern ? await auth.getSession() : await auth.getLoginState(); }
+        catch (error) { throw sessionError(error); }
+        if (modern) {
+          if (state && state.error) throw sessionError(state.error);
+          if (!state || !state.data || !state.data.session) throw expired();
+        } else if (!state || state.isAnonymousAuth || state.loginType === 'ANONYMOUS') throw expired();
+      })();
+      try { return await pendingSession; } finally { pendingSession = null; }
+    }
     async function invoke(action, params = {}) {
       init();
-      let state;
-      try { state = modern ? await auth.getSession() : await auth.getLoginState(); } catch (_) { throw expired(); }
-      if (modern) {
-        if (!state || state.error || !state.data || !state.data.session) throw expired();
-      } else if (!state || state.isAnonymousAuth || state.loginType === 'ANONYMOUS') throw expired();
+      await checkSession();
       let response;
       try { response = await app.callFunction({ name: 'webHomework', data: { action, ...params } }); }
       catch (e) {
-        if (/AUTH|TOKEN|CREDENTIAL|LOGIN/i.test(String(e && e.code || ''))) throw expired();
+        if (isAuthError(e)) throw expired();
         throw new HomeworkError('UNAVAILABLE', '作业服务连接失败，请重试或联系管理员');
       }
       const result = response && response.result;

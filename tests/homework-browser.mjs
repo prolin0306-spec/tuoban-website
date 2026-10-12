@@ -203,11 +203,15 @@ try {
  assert.equal(await evaluate(`document.querySelector('.hw-student[data-student-id="student-b"] [data-record-input="book-d"]').value`),'0');
  });
  await check('each planned task can be checked complete and unchecked to recorded zero',async()=>{
+  await evaluate(`window.__originalCard=document.querySelector('[data-student-id="student-b"]');window.__otherCard=document.querySelector('[data-student-id="student-a"]');window.__otherCard.open=true;`);
   await evaluate(`(()=>{const card=document.querySelector('.hw-student[data-student-id="student-b"]');card.open=true;card.querySelector('[data-completion-toggle="book-d"]').click()})()`);
   await until('document.body.innerText.includes("虚构学生乙 · 测试作业d 已标记为完成")');
   let record=data.hw_daily_records.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today);
   const plan=data.hw_daily_plans.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today);
   assert.equal(record.actualAmount,plan.plannedAmount);assert.equal(plan.isCompleted,true);
+  assert.equal(await evaluate(`window.__originalCard===document.querySelector('[data-student-id="student-b"]') && window.__originalCard.open && window.__otherCard===document.querySelector('[data-student-id="student-a"]') && window.__otherCard.open`),true);
+  await evaluate('window.dispatchEvent(new Event("focus"))');
+  assert.equal(await evaluate('window.__originalCard.isConnected'),true);
   await evaluate(`(()=>{const card=document.querySelector('.hw-student[data-student-id="student-b"]');card.open=true;card.querySelector('[data-completion-toggle="book-d"]').click()})()`);
   await until('document.body.innerText.includes("虚构学生乙 · 测试作业d 已标记为未完成")');
   record=data.hw_daily_records.find(row=>row.studentId==='student-b'&&row.homeworkBookId==='book-d'&&row.date===today);
@@ -246,6 +250,19 @@ try {
   assert.equal(book.completedAmount,0);
   assert.equal(JSON.stringify(data.hw_daily_plans),plansBefore);
   assert.equal(JSON.stringify(data.hw_daily_records),recordsBefore);
+ });
+ await check('rapid checks keep cards and drafts; failed save restores checkbox',async()=>{
+  const books=data.hw_homework_books.filter(row=>row.studentId==='student-b'&&['语文阅读','数学口算'].includes(row.name));
+  const ids=books.map(book=>book._id);
+  await evaluate(`window.__stable=document.querySelector('[data-student-id="student-b"]');window.__stable.open=true;window.__boxes=${JSON.stringify(ids)}.map(id=>document.querySelector('[data-book-completion-toggle="'+id+'"]'));window.__boxes.forEach(box=>box.click());`);
+  await until('document.body.innerText.includes("数学口算 已标记为整项完成") && Array.from(document.querySelectorAll("[data-book-completion-toggle]")).every(box=>!box.disabled)');
+  assert.ok(books.every(book=>book.completedAmount===book.totalAmount));
+  assert.equal(await evaluate('window.__stable.isConnected && window.__stable.open'),true);
+  unavailable=true;
+  await evaluate(`document.querySelector('[data-book-completion-toggle="${ids[0]}"]').click()`);
+  await until('document.body.innerText.includes("作业服务连接失败")');
+  assert.equal(await evaluate(`document.querySelector('[data-book-completion-toggle="${ids[0]}"]').checked`),true);
+  assert.equal(books[0].completedAmount,books[0].totalAmount); unavailable=false;
  });
  await check('mobile layout, navigation and expandable tasks',async()=>{
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});

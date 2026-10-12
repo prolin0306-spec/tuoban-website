@@ -90,6 +90,29 @@
     });
     label.append(input); form.append(label, button, result); return form;
   }
+  let completionQueue = Promise.resolve();
+  function saveCompletion(checkbox, operation, student, bookId, date, successText) {
+    const checked = checkbox.checked, classId = $('classSelect').value, sequence = generation;
+    checkbox.disabled = true;
+    const job = completionQueue.then(async () => {
+      let saved = false;
+      try {
+        await operation(); saved = true;
+        if (sequence !== generation || !checkbox.isConnected) return;
+        const data = await api.workspace(classId, date);
+        if (sequence !== generation || !checkbox.isConnected) return;
+        render(data, { studentId: student.id, bookId });
+        message(successText);
+      } catch (error) {
+        if (sequence !== generation || !checkbox.isConnected) return;
+        if (!saved) checkbox.checked = !checked;
+        if (['AUTH_REQUIRED', 'TEACHER_DISABLED', 'TEACHER_UNLINKED', 'FORBIDDEN'].includes(error.code)) failure(error);
+        else message(saved ? '已保存，但统计更新失败，请手动刷新核对；无需重复提交。' : error.message || '保存失败，请重试', 'error');
+      } finally { checkbox.disabled = false; }
+    });
+    completionQueue = job.catch(() => {});
+    return job;
+  }
   function completionToggle(student, task, date, today) {
     const label = element('label', undefined, 'hw-complete-toggle');
     const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = task.status === 'completed';
@@ -97,11 +120,10 @@
     const invalid = !task.hasPlan || !finite(task.planned) || task.status === 'conflict' || date > today;
     checkbox.disabled = invalid;
     checkbox.addEventListener('change', async () => {
-      const checked = checkbox.checked, amount = checked ? task.planned : 0; checkbox.disabled = true; message('正在保存完成状态…');
-      try {
-        await api.saveDailyRecord({ studentId: student.id, homeworkBookId: task.homeworkBookId, date, actualAmount: amount });
-        await loadWorkspace(); message(`${student.name || '该学生'} · ${task.bookName} 已标记为${checked ? '完成' : '未完成'}`);
-      } catch (error) { checkbox.checked = !checked; checkbox.disabled = invalid; message(error.message || '保存失败，请重试', 'error'); }
+      const checked = checkbox.checked, amount = checked ? task.planned : 0;
+      await saveCompletion(checkbox, () => api.saveDailyRecord({ studentId: student.id,
+        homeworkBookId: task.homeworkBookId, date, actualAmount: amount }), student, task.homeworkBookId, date,
+        `${student.name || '该学生'} · ${task.bookName} 已标记为${checked ? '完成' : '未完成'}`);
     });
     label.append(checkbox, element('span', checkbox.checked ? '已完成' : '完成')); return label;
   }
@@ -117,11 +139,10 @@
       const checkbox = element('input'); checkbox.type = 'checkbox'; checkbox.checked = book.isCompleted === true;
       checkbox.dataset.bookCompletionToggle = book.id; checkbox.disabled = date !== today;
       checkbox.addEventListener('change', async () => {
-        const checked = checkbox.checked; checkbox.disabled = true; message('正在保存整项作业完成状态…');
-        try {
-          await api.setBookComplete({ studentId: student.id, homeworkBookId: book.id, isCompleted: checked });
-          await loadWorkspace(); message(`${student.name || '该学生'} · ${book.name} 已标记为${checked ? '整项完成' : '未完成'}`);
-        } catch (error) { checkbox.checked = !checked; checkbox.disabled = date !== today; message(error.message || '保存失败，请重试', 'error'); }
+        const checked = checkbox.checked;
+        await saveCompletion(checkbox, () => api.setBookComplete({ studentId: student.id,
+          homeworkBookId: book.id, isCompleted: checked }), student, book.id, date,
+          `${student.name || '该学生'} · ${book.name} 已标记为${checked ? '整项完成' : '未完成'}`);
       });
       label.append(checkbox, element('span', checkbox.checked ? '整项已完成' : '整项完成')); main.append(label);
     }
@@ -130,17 +151,18 @@
     if (book.canCompleteWhole && date !== today) row.append(element('p', '切换到今天可勾选整项完成', 'hw-muted'));
     return row;
   }
-  function render(data) {
+  function render(data, changed) {
     if (!data || !Array.isArray(data.students) || !data.summary) throw new Error('作业服务返回无效数据');
-    $('studentCards').replaceChildren(); $('bookStudent').replaceChildren();
+    if (!changed) { $('studentCards').replaceChildren(); $('bookStudent').replaceChildren(); }
     $('homeworkSummary').textContent = `${data.className || '未命名班级'} · ${data.date} · ${data.students.length} 位学生 · ${data.summary.registeredBookCount || 0} 本已登记作业 · ` +
       `${data.summary.taskCount} 项任务 · ${data.summary.recordedTaskCount} 项有实际记录 · 全班计划进度 ${data.summary.overallProgress}%。` +
       '按红、黄、绿及优先级降序排列。';
-    for (const student of data.students) {
+    if (!changed) for (const student of data.students) {
       const option = element('option', student.name || '未命名学生'); option.value = student.id; $('bookStudent').append(option);
     }
     if (!data.students.length) { $('studentCards').append(element('p', '该班级暂无学生', 'adm-card hw-empty')); return; }
     for (const student of data.students) {
+      if (changed && student.id !== changed.studentId) continue;
       const card = element('details', undefined, 'adm-card hw-student');
       const rate = student.projection && student.projection.rate;
       const color = student.projection && student.projection.color || 'unknown';
@@ -189,7 +211,26 @@
         }
         tasks.append(row);
       }
-      card.append(tasks); $('studentCards').append(card);
+      card.append(tasks);
+      if (changed) {
+        const existing = [...$('studentCards').children].find(node => node.dataset.studentId === student.id);
+        if (!existing) continue;
+        existing.dataset.color = color;
+        const previousMetrics = existing.querySelector('.hw-metrics');
+        if (previousMetrics) previousMetrics.replaceWith(metrics);
+        for (const key of ['bookId', 'registeredBookId']) {
+          const oldRow = [...existing.querySelectorAll('li')].find(node => node.dataset[key] === changed.bookId);
+          const newRow = [...card.querySelectorAll('li')].find(node => node.dataset[key] === changed.bookId);
+          if (!oldRow || !newRow) continue;
+          const open = oldRow.querySelector('details')?.open;
+          const focused = oldRow.contains(document.activeElement);
+          oldRow.replaceWith(newRow);
+          if (open && newRow.querySelector('details')) newRow.querySelector('details').open = true;
+          if (focused) newRow.querySelector('input')?.focus({ preventScroll: true });
+        }
+        continue;
+      }
+      $('studentCards').append(card);
       window.HomeworkFeedback.mount(card, student, data.date, api);
     }
   }
@@ -276,7 +317,7 @@
   window.initSidebar('homework.html');
   try { api.onExpired(() => { ++generation; failure({ code: 'AUTH_REQUIRED', message: '作业会话已过期，请重新验证' }); }); }
   catch (error) { failure(error); }
-  window.addEventListener('focus', () => { if (active && !window.HomeworkFeedback.hasPending()) loadWorkspace(); });
+  // Returning focus must not discard expanded cards or unsaved edits. Refresh is explicit.
   window.addEventListener('storage', event => { if (event.key === 'homework-students-revision' && active) loadWorkspace(); });
   start();
 })();

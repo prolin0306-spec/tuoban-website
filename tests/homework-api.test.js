@@ -94,3 +94,21 @@ test('backend refusals and raw error messages do not leak data', async () => {
     await assert.rejects(createHomeworkAPI(config, sdk({ result: { code, message: 'sensitive-value' } })).classes(), e => e.code === code && !e.message.includes('sensitive-value'));
   }
 });
+test('all admin consumers share one SDK client and concurrent session restoration', async () => {
+  const s = modernSdk(); let reads = 0;
+  s.auth.getSession = async () => { reads++; await new Promise(resolve=>setTimeout(resolve,5)); return {data:{session:{sub:'fictional'}}}; };
+  const a=createHomeworkAPI(config,s), b=createHomeworkAPI({...config},s);
+  assert.equal(a,b); await Promise.all([a.session(),b.classes()]);
+  assert.equal(reads,1); assert.equal(s.calls.filter(call=>call.init).length,1);
+  await a.session(); assert.equal(reads,2); // Never cache an authorization result across requests.
+});
+test('temporary SDK session failures do not falsely expire or clear the login', async () => {
+  for (const throws of [true,false]) {
+    const s=modernSdk(); let failed=true;
+    s.auth.getSession=async()=>{if(failed){if(throws)throw {code:'NETWORK_ERROR'};return {error:{code:'NETWORK_ERROR'},data:{session:null}};}return {data:{session:{sub:'fictional'}}};};
+    const a=createHomeworkAPI(config,s);
+    await assert.rejects(a.session(),{code:'UNAVAILABLE'});
+    assert.ok(!s.calls.includes('signOut')); failed=false; await a.session();
+    assert.equal(s.calls.filter(call=>call.login).length,0);
+  }
+});
